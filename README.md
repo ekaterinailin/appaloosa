@@ -25,3 +25,5 @@ This work is supported by a NSF Astronomy and Astrophysics Postdoctoral Fellowsh
 5. Generate a list of .fake output files, run `postprocess.py`
 6. gzip the output table
 7. Do analysis and create plots for paper by running `analysis.py`, specifically `paper1_plots()`
+
+## Detailed Documentaion will be added soon.
