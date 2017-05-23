@@ -1269,10 +1269,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         os.chdir(str(sys.argv[1])) #go where the data are stored
         if os.path.isfile('flarelist.txt') == False: #check if output file already exists
             with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
-                firstline=bytes('Filename \t Quarter \t Duration \n', 'utf-8') #write a header line
+                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename                     \t Number of Epoch \t Total Exposure Time of LC in Days \n', 'utf-8') #write a header line
                 myfile.write(firstline)    #write it into table
         with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
-            line=str(len(istart))+'\t' + 'bla' + '\t' + 'bla' + '\n' #insert output params
+            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(len(time)) + '\t' + str(np.sum(exptime)) + '\n' #insert output params
             print(line)
             myfile.write(line)
             myfile.close()
@@ -1338,7 +1338,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     return
 
-
+#file:///work1/eilin/data/kplr009726699-2010203174610_slc.fits
 # let this file be called from the terminal directly. e.g.:
 # $python appaloosa.py folder
 if __name__ == "__main__":
@@ -1349,5 +1349,5 @@ if __name__ == "__main__":
     for myfile in os.listdir(str(sys.argv[1])):
         if fnmatch.fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
           RunLC(myfile, dbmode='fits', display=True, debug=True, writeout=True)
-          #print(len(istart))
+     
 
