@@ -1,5 +1,15 @@
-wget -q -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*' -erobots=off -P Q16_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q16_public/
-wget -q -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*'-erobots=off -P Q17_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q17_public/
+for i in 16 17
+do
+a='Q'
+b='_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q'
+c='_public/'
+c=$a$i$b$i$c
+echo $c
+wget -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*' -erobots=off -P $c
+
+done
+
+#wget -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*'-erobots=off -P Q17_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q17_public/
 #  -q,  --quiet                     quiet (no output)
 #-nH, --no-host-directories       don't create host directories
 #--cut-dirs=NUMBER           ignore NUMBER remote directory components
