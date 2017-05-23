@@ -1,15 +1,17 @@
-for i in 16 17
+for i in 16 17 #range does not work, app. only in bash >3.0
 do
 a='Q'
 b='_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q'
 c='_public/'
-c=$a$i$b$i$c
-echo $c
+c=$a$i$b$i$c #concat
+echo $c #essentially print
 wget -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*' -erobots=off -P $c
 
 done
 
+
 #wget -nH --cut-dirs=6 -r -l0 -c -N -np -R 'index*'-erobots=off -P Q17_public/ http://archive.stsci.edu/pub/kepler/lightcurves/tarfiles/Q17_public/
+
 #  -q,  --quiet                     quiet (no output)
 #-nH, --no-host-directories       don't create host directories
 #--cut-dirs=NUMBER           ignore NUMBER remote directory components
