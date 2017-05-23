@@ -2,7 +2,7 @@
 script to carry out flare finding in Kepler LC's
 
 """
-
+import io # for writeout option in RunLC
 import numpy as np
 import os.path
 from os.path import expanduser
@@ -972,7 +972,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 # objectid = '9726699'  # GJ 1243
 def RunLC(file='', objectid='', ftype='sap', lctype='',
           display=False, readfile=False, debug=False, dofake=True,
-          dbmode='fits', gapwindow=0.1, maxgap=0.125, verbosefake=False, nfake=100):
+          dbmode='fits', gapwindow=0.1, maxgap=0.125, verbosefake=False, nfake=100, writeout=False):
     '''
     Main wrapper to obtain and process a light curve
     '''
@@ -1263,7 +1263,19 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
         plt.savefig(file + '_lightcurve.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
         plt.show()
-
+    
+    if writeout is True:
+        import fnmatch
+        os.chdir(str(sys.argv[1])) #go where the data are stored
+        if os.path.isfile('flarelist.txt') == False: #check if output file already exists
+            with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
+                firstline=bytes('Filename \t Quarter \t Duration \n', 'utf-8') #write a header line
+                myfile.write(firstline)    #write it into table
+        with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
+            line=str(len(istart))+'\t' + 'bla' + '\t' + 'bla' + '\n' #insert output params
+            print(line)
+            myfile.write(line)
+            myfile.close()
     '''
     #-- IF YOU WANT TO PLAY WITH THE WAVELET STUFF MORE, WORK HERE
     test_model = detrend.WaveletSmooth(time, flux_gap)
@@ -1328,8 +1340,14 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
 
 # let this file be called from the terminal directly. e.g.:
-# $python appaloosa.py 12345678
+# $python appaloosa.py folder
 if __name__ == "__main__":
     import sys
-    RunLC(file=str(sys.argv[1]), dbmode='csv', display=True, debug=True)
+    import fnmatch
+    import os
+    os.chdir(str(sys.argv[1]))
+    for myfile in os.listdir(str(sys.argv[1])):
+        if fnmatch.fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
+          RunLC(myfile, dbmode='fits', display=True, debug=True, writeout=True)
+          #print(len(istart))
 
