@@ -5,16 +5,16 @@ script to carry out flare finding in Kepler LC's
 import io # for writeout option in RunLC
 import numpy as np
 import os.path
-from os.path import expanduser
+from os.path import expanduser #On Unix and Windows, return the argument with an initial component of sim or sim user replaced by that users home directory.
 import time
 import datetime
-from version import __version__
+from version import __version__ #according to PEP 8, __version__ return the version number of the module. It is stored in version.py
 from aflare import aflare1
 import detrend
 from gatspy.periodic import LombScargleFast
 import warnings
 import matplotlib.pyplot as plt
-from pandas import rolling_std
+from pandas import rolling_std #Moving standard deviation. By default, the result is set to the right edge of the window. This can be changed to the center of the window by setting center=True.
 from scipy import stats
 from scipy.optimize import curve_fit
 from scipy.signal import wiener
@@ -248,7 +248,7 @@ def GetLCeverest(file, win_size=3):
     qual = np.zeros_like(flux_raw) # keep the outliers... for now
 
     error = np.ones_like(time[isrl]) * np.nanmedian(rolling_std(flux_raw[isrl], win_size, center=True))
-
+    #ones_like: Return an array of ones with the same shape and type as a given array.
     return qtr, time[isrl], qual[isrl], exptime, flux_raw[isrl], error
 
 
@@ -1345,6 +1345,7 @@ if __name__ == "__main__":
     import sys
     import fnmatch
     import os
+    print(haz_mysql)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
         if fnmatch.fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
