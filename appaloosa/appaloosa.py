@@ -147,10 +147,12 @@ def GetLCfits(file):
 
     hdu = fits.open(file)
     data_rec = hdu[1].data
-    header = fits.getheader(file, 1)
+    header = hdu[0].header
+    headerone = hdu[1].header
 
     time = data_rec['TIME']
-    time_res = header['TIMEDEL']*60*60*24 #time resolution in seconds
+    time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
+    quarter_num = header['QUARTER']
     flux_raw = data_rec['SAP_FLUX']
     error = data_rec['SAP_FLUX_ERR']
     sap_quality = data_rec['SAP_QUALITY']
@@ -166,7 +168,7 @@ def GetLCfits(file):
         dtime = 30 * 54.2 / 60. / 60. / 24.
     exptime = np.ones_like(time[isrl]) * dtime
 
-    return qtr, time[isrl], sap_quality[isrl], exptime, flux_raw[isrl], error[isrl], time_res
+    return qtr, time[isrl], sap_quality[isrl], exptime, flux_raw[isrl], error[isrl], time_res, quarter_num
 
 
 def GetLCk2(file):
@@ -1033,7 +1035,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     ######################
     elif dbmode is 'fits':
         objectid = str(int( file[file.find('kplr')+4:file.find('-')] ))
-        qtr, time, lcflag, exptime, flux_raw, error, time_res = GetLCfits(file)
+        qtr, time, lcflag, exptime, flux_raw, error, time_res, quarter_num = GetLCfits(file)
 
         # put flare output in to a set of subdirectories.
         # use first 3 digits to help keep directories to ~1k files
@@ -1270,10 +1272,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         os.chdir(str(sys.argv[1])) #go where the data are stored
         if os.path.isfile('flarelist.txt') == False: #check if output file already exists
             with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
-                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Number of Epoch \t Total Exposure Time of LC in Days \t Time Resolution in [s]\n', 'utf-8') #write a header line
+                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Quarter \t Total Exposure Time of LC in Days \t Time Resolution in [min]\n', 'utf-8') #write a header line
                 myfile.write(firstline)    #write it into table
         with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
-            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(len(time)) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\n' #insert output params
+            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(quarter_num) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\n' #insert output params
             print(line)
             myfile.write(line)
             myfile.close()
@@ -1352,7 +1354,7 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-*_slc.fits'): 
+        if fnmatch(myfile,'kplr009726699-*lc.fits'): 
           RunLC(myfile, dbmode='fits', display=False, debug=True, writeout=True)
      
 
