@@ -666,10 +666,8 @@ def MeasureS2N(flux, error, model, istart=-1, istop=-1):
     '''
     this MAY NOT be something i want....
     '''
-    if (istart < 0):
-        istart = 0
-    if (istop < 0):
-        istop = len(flux)
+    if (istart < 0): istart = 0 
+    if (istop < 0):istop = len(flux)
 
     flareflux = flux[istart:istop+1]
     modelflux = model[istart:istop+1]
@@ -1272,10 +1270,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         os.chdir(str(sys.argv[1])) #go where the data are stored
         if os.path.isfile('flarelist.txt') == False: #check if output file already exists
             with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
-                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Quarter \t Total Exposure Time of LC in Days \t Time Resolution in [min]\n', 'utf-8') #write a header line
+                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Quarter \t Total Exposure Time of LC in Days \t Time Resolution in [min] \t BJD-2454833 days \n', 'utf-8') #write a header line
                 myfile.write(firstline)    #write it into table
         with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
-            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(quarter_num) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\n' #insert output params
+            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(quarter_num) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\t' + str(time[0]) + '\n' #insert output params
             print(line)
             myfile.write(line)
             myfile.close()
@@ -1354,7 +1352,7 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-*lc.fits'): 
+        if fnmatch(myfile,'kplr009726699-*.fits'): 
           RunLC(myfile, dbmode='fits', display=False, debug=True, writeout=True)
      
 
