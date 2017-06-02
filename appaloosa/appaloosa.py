@@ -968,7 +968,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     #     plt.title('FakeFlares')
     #     plt.show()
 
-    return ed_bin_center, rec_bin
+    return ed_bin_center, rec_bin, ed_fake, rec_fake
 
 
 # objectid = '9726699'  # GJ 1243
@@ -1152,49 +1152,85 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             print(str(datetime.datetime.now()) + ' FakeFlares started')
 
         if dofake is True:
-            medflux = np.nanmedian(flux_model_i) # flux needs to be normalized
+            ed_fake_tot=np.empty([0])#sum 
+            rec_fake_tot=np.empty([0])#sum
+            for ninj in range(0,3):#added loop
+                medflux = np.nanmedian(flux_model_i) # flux needs to be normalized
 
-            if len(istart_i)>0:
-                t_tmp1 = time[dl[i]:dr[i]][istart_i]
-                t_tmp2 = time[dl[i]:dr[i]][istop_i]
-            else:
-                t_tmp1 = []
-                t_tmp2 = []
-            ed_fake, frac_rec = FakeFlares(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]]/medflux - 1.0,
-                                           error[dl[i]:dr[i]]/medflux, lcflag[dl[i]:dr[i]],
-                                           t_tmp1, t_tmp2,
-                                           savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
-                                           outfile=outfile + '.fake', display=display,
-                                           nfake=nfake, debug=debug)
+                if len(istart_i)>0:
+                    t_tmp1 = time[dl[i]:dr[i]][istart_i]
+                    t_tmp2 = time[dl[i]:dr[i]][istop_i]
+                else:
+                    t_tmp1 = []
+                    t_tmp2 = []
+                ed_fake, frac_rec,ed_fake_ninj, rec_fake_ninj = FakeFlares(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]]/medflux - 1.0,
+                                            error[dl[i]:dr[i]]/medflux, lcflag[dl[i]:dr[i]],
+                                            t_tmp1, t_tmp2,
+                                            savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
+                                            outfile=outfile + '_' +str(ninj) +'.fake', display=display,#added ninj
+                                            nfake=nfake, debug=debug)
 
-            rl = np.isfinite(frac_rec)
-            frac_rec_sm = wiener(frac_rec[rl], 3)
+                ed_fake_tot=np.append(ed_fake_tot, ed_fake_ninj)
+                rec_fake_tot=np.append(rec_fake_tot, rec_fake_ninj)
+                rl = np.isfinite(frac_rec)
+                frac_rec_sm = wiener(frac_rec[rl], 3)
+                
+                
+                # use this completeness curve to estimate 68% complete
+                x68 = np.where((frac_rec_sm >= 0.68))
+                if len(x68[0])>0:
+                    ed68_i = min(ed_fake[rl][x68])
+                else:
+                    ed68_i = -99
 
-            # use this completeness curve to estimate 68% complete
-            x68 = np.where((frac_rec_sm >= 0.68))
-            if len(x68[0])>0:
-                ed68_i = min(ed_fake[rl][x68])
-            else:
-                ed68_i = -99
+                x90 = np.where((frac_rec_sm >= 0.90))
+                if len(x90[0])>0:
+                    ed90_i = min(ed_fake[rl][x90])
+                else:
+                    ed90_i = -99
 
-            x90 = np.where((frac_rec_sm >= 0.90))
-            if len(x90[0])>0:
-                ed90_i = min(ed_fake[rl][x90])
-            else:
-                ed90_i = -99
+                if display is True:
+                    # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
+                    plt.figure()
+                    plt.plot(ed_fake, frac_rec, c='k')
+                    plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
+                    plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
+                    plt.xlabel('Flare Equivalent Duration (seconds)')
+                    plt.ylabel('Fraction of Recovered Flares')
 
+                    plt.xlim((0,np.nanmax(ed_fake)))
+                    plt.savefig(file + '_fake_recovered_'+ str(ninj)+ '.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
+                    #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
+                    plt.show()
+            #HERE I COPY AND PASTE STUFF START
+            nbins = 20
+
+            # the number of events per bin recovered
+            rec_bin_N, ed_bin = np.histogram(ed_fake_tot, weights=rec_fake_tot, bins=nbins)
+            # the number of events per bin
+            rec_bin_D, _ = np.histogram(ed_fake_tot, bins=nbins)
+
+            ed_bin_center = (ed_bin[1:] + ed_bin[:-1])/2.
+
+            frac_rec_tot = rec_bin_N / rec_bin_D#umbenannt
+            #print('HERE WE GO')
+            #print(rec_bin)
+            
             if display is True:
-                # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
-                plt.figure()
-                plt.plot(ed_fake, frac_rec, c='k')
-                plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
-                plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
-                plt.xlabel('Flare Equivalent Duration (seconds)')
-                plt.ylabel('Fraction of Recovered Flares')
+                    # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
+                    plt.figure()
+                    plt.plot(ed_fake_tot, frac_rec_tot, c='k')#HIER GEHT ES WEITER: ed_fake_tot hat 300 einträge muss, also noch gebinnt werden! HIER GEHT ES WEITER! HIER GEHT ES WEITER! HIER GEHT ES WEITER!
+                    #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
+                    #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
+                    plt.xlabel('Flare Equivalent Duration (seconds)')
+                    plt.ylabel('Fraction of Recovered Flares')
 
-                plt.xlim((0,np.nanmax(ed_fake)))
-                plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
-                plt.show()
+                    plt.xlim((0,np.nanmax(ed_fake_tot)))
+                    plt.savefig(file + '_fake_recovered_.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
+                    #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
+                    plt.show()
+            
+            #HERE I COPY AND PASTE STUFF END
         else:
             # for speed you can skip the fake-flare tests
             ed68_i = -199
@@ -1352,7 +1388,7 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-*.fits'): 
-          RunLC(myfile, dbmode='fits', display=False, debug=True, writeout=True)
+        if fnmatch(myfile,'kplr009726699-2013131215648_llc.fits'): 
+          RunLC(myfile, dbmode='fits', display=True, debug=True, writeout=True)
      
 
