@@ -1154,7 +1154,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         if dofake is True:
             ed_fake_tot=np.empty([0])#sum 
             rec_fake_tot=np.empty([0])#sum
-            for ninj in range(0,3):#added loop
+            for ninj in range(0,300):#added loop
                 medflux = np.nanmedian(flux_model_i) # flux needs to be normalized
 
                 if len(istart_i)>0:
@@ -1189,21 +1189,21 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 else:
                     ed90_i = -99
 
-                if display is True:
+                #if display is True:
                     # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
-                    plt.figure()
-                    plt.plot(ed_fake, frac_rec, c='k')
-                    plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
-                    plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
-                    plt.xlabel('Flare Equivalent Duration (seconds)')
-                    plt.ylabel('Fraction of Recovered Flares')
+                    #plt.figure()
+                    #plt.plot(ed_fake, frac_rec, c='k')
+                    #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
+                    #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
+                    #plt.xlabel('Flare Equivalent Duration (seconds)')
+                    #plt.ylabel('Fraction of Recovered Flares')
 
-                    plt.xlim((0,np.nanmax(ed_fake)))
-                    plt.savefig(file + '_fake_recovered_'+ str(ninj)+ '.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
+                    #plt.xlim((0,np.nanmax(ed_fake)))
+                    #plt.savefig(file + '_fake_recovered_'+ str(ninj)+ '.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
                     #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
-                    plt.show()
+                    #plt.show()
             #HERE I COPY AND PASTE STUFF START
-            nbins = 20
+            nbins = 50
 
             # the number of events per bin recovered
             rec_bin_N, ed_bin = np.histogram(ed_fake_tot, weights=rec_fake_tot, bins=nbins)
@@ -1219,14 +1219,14 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             if display is True:
                     # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
                     plt.figure()
-                    plt.plot(ed_fake_tot, frac_rec_tot, c='k')#HIER GEHT ES WEITER: ed_fake_tot hat 300 einträge muss, also noch gebinnt werden! HIER GEHT ES WEITER! HIER GEHT ES WEITER! HIER GEHT ES WEITER!
+                    plt.plot(ed_bin_center, frac_rec_tot, c='k')#HIER GEHT ES WEITER: ed_fake_tot hat 300 einträge muss, also noch gebinnt werden! HIER GEHT ES WEITER! HIER GEHT ES WEITER! HIER GEHT ES WEITER!
                     #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
                     #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
                     plt.xlabel('Flare Equivalent Duration (seconds)')
                     plt.ylabel('Fraction of Recovered Flares')
 
                     plt.xlim((0,np.nanmax(ed_fake_tot)))
-                    plt.savefig(file + '_fake_recovered_.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
+                    plt.savefig(file + '_fake_recovered_tot.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
                     #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
                     plt.show()
             
@@ -1388,7 +1388,10 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-2013131215648_llc.fits'): 
+        if fnmatch(myfile,'ktwo219543512-c07_llc.fits'): 
           RunLC(myfile, dbmode='fits', display=True, debug=True, writeout=True)
+          
+    import timeit
+    #print(timeit.timeit("FlagCuts()", setup="from __main__ import FlagCuts"))
      
 
