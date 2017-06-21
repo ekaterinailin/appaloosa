@@ -21,6 +21,7 @@ from scipy.signal import wiener
 from scipy import signal
 from astropy.io import fits
 import matplotlib
+from glob import glob
 matplotlib.rcParams.update({'font.size':18})
 matplotlib.rcParams.update({'font.family':'serif'})
 
@@ -32,9 +33,28 @@ try:
 except ImportError:
     haz_mysql = False
 
+def KeplerorK2(file):
+    
+    '''
+    Checks if we are dealing with Kepler or K2 data in a particular file
+    
+    Input:
+    
+    string: filename
+    
+    Output:
+    
+    int: 1 for Kepler mission or 2 for K2 mission
+    
+    '''
+   
+    if glob('ktwo*')==[]:
+        return 1
+    elif glob('kplr*')==[]:
+        return 2
 
 def chisq(data, error, model):
-    '''
+    '''model
     Compute the normalized chi square statistic:
     chisq =  1 / N * SUM(i) ( (data(i) - model(i))/error(i) )^2
     '''
@@ -152,7 +172,13 @@ def GetLCfits(file):
 
     time = data_rec['TIME']
     time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
-    quarter_num = header['QUARTER']
+    print(file)
+    print(KeplerorK2(file))
+    if KeplerorK2(file)==1: 
+        quarter_num = header['QUARTER']
+    elif KeplerorK2(file)==2: 
+        quarter_num = header['CAMPAIGN']
+    print(quarter_num)
     flux_raw = data_rec['SAP_FLUX']
     error = data_rec['SAP_FLUX_ERR']
     sap_quality = data_rec['SAP_QUALITY']
@@ -1032,7 +1058,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     ######################
     elif dbmode is 'fits':
-        objectid = str(int( file[file.find('kplr')+4:file.find('-')] ))
+        
+        if KeplerorK2(file)==2: objectid = str(int( file[file.find('ktwo')+4:file.find('-')] ))        
+        elif KeplerorK2(file)==1:objectid = str(int( file[file.find('kplr')+4:file.find('-')] ))
+        
         qtr, time, lcflag, exptime, flux_raw, error, time_res, quarter_num = GetLCfits(file)
 
         # put flare output in to a set of subdirectories.
@@ -1202,6 +1231,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                     #plt.savefig(file + '_fake_recovered_'+ str(ninj)+ '.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
                     #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
                     #plt.show()
+                    
             #HERE I COPY AND PASTE STUFF START
             nbins = 50
 
@@ -1213,13 +1243,12 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             ed_bin_center = (ed_bin[1:] + ed_bin[:-1])/2.
 
             frac_rec_tot = rec_bin_N / rec_bin_D#umbenannt
-            #print('HERE WE GO')
-            #print(rec_bin)
+            
             
             if display is True:
                     # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
                     plt.figure()
-                    plt.plot(ed_bin_center, frac_rec_tot, c='k')#HIER GEHT ES WEITER: ed_fake_tot hat 300 einträge muss, also noch gebinnt werden! HIER GEHT ES WEITER! HIER GEHT ES WEITER! HIER GEHT ES WEITER!
+                    plt.plot(ed_bin_center, frac_rec_tot, c='k')
                     #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
                     #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
                     plt.xlabel('Flare Equivalent Duration (seconds)')
@@ -1388,9 +1417,9 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'ktwo219543512-c07_llc.fits'): 
-          RunLC(myfile, dbmode='fits', display=True, debug=True, writeout=True)
-          
+        if fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
+          RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=True, writeout=True)
+          True
     import timeit
     #print(timeit.timeit("FlagCuts()", setup="from __main__ import FlagCuts"))
      
