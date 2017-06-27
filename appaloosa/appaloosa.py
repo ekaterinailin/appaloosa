@@ -22,9 +22,9 @@ from scipy import signal
 from astropy.io import fits
 import matplotlib
 from glob import glob
-matplotlib.rcParams.update({'font.size':18})
-matplotlib.rcParams.update({'font.family':'serif'})
-
+matplotlib.rcParams.update({'font.size':14})
+matplotlib.rcParams.update({'font.family':'sans-serif'})
+matplotlib.rcParams.update({'font.sans-serif':'Arial'})
 
 # from rayleigh import RayleighPowerSpectrum
 try:
@@ -1233,8 +1233,9 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                     #plt.show()
                     
             #HERE I COPY AND PASTE STUFF START
-            nbins = 50
-
+            #nbins = 50
+            nbins=int(np.ceil(max(ed_fake_tot)/2.))
+            print('number of bins: ' + str(nbins))
             # the number of events per bin recovered
             rec_bin_N, ed_bin = np.histogram(ed_fake_tot, weights=rec_fake_tot, bins=nbins)
             # the number of events per bin
@@ -1244,14 +1245,24 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
             frac_rec_tot = rec_bin_N / rec_bin_D#umbenannt
             
+            #Save the recovery rate plot data as txt file for future compilations:
+            
+            os.chdir(str(sys.argv[1])) #go where the data are stored
+            rec_rate = open(file+'recreate.txt', 'w')
+            for k in range(0,nbins):
+                if ed_bin_center[k]!='nan' and frac_rec_tot[k]!='nan':
+                    rec_rate.write(str(ed_bin_center[k]) + '\t' + str(frac_rec_tot[k])+'\n')
+            rec_rate.close()
+            #End of file saving
             
             if display is True:
                     # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
+                    
                     plt.figure()
                     plt.plot(ed_bin_center, frac_rec_tot, c='k')
                     #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
                     #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
-                    plt.xlabel('Flare Equivalent Duration (seconds)')
+                    plt.xlabel('$ED$ (s)')
                     plt.ylabel('Fraction of Recovered Flares')
 
                     plt.xlim((0,np.nanmax(ed_fake_tot)))
@@ -1301,7 +1312,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     if display is True:
         print(str(len(istart))+' flare candidates found')
-
+    
         plt.figure()
         plt.plot(time, flux_gap, 'k', alpha=0.7, lw=0.8)
 
@@ -1318,7 +1329,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
 
         plt.xlabel('Time (BJD - 2454833 days)')
-        plt.ylabel(r'Flux (e- sec$^{-1}$)')
+        plt.ylabel(r'Flux ($e^-$ sec$^{-1}$)')
 
         xdur = np.nanmax(time) - np.nanmin(time)
         xdur0 = np.nanmin(time) + xdur/2.
@@ -1329,7 +1340,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         plt.ylim(np.nanmin(flux_gap[xdurok]), np.nanmax(flux_gap[xdurok]))
 
         plt.savefig(file + '_lightcurve.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
-        plt.show()
+        #plt.show()
+        
+       
+        
     
     if writeout is True:
         os.chdir(str(sys.argv[1])) #go where the data are stored
@@ -1417,9 +1431,8 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
-          RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=True, writeout=True)
-          True
+        if fnmatch(myfile,'ktwo*llc.fits'): 
+          RunLC(myfile, dbmode='fits', display=True,debug=True,dofake=True, writeout=True)
     import timeit
     #print(timeit.timeit("FlagCuts()", setup="from __main__ import FlagCuts"))
      
