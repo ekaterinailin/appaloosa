@@ -44,14 +44,13 @@ def KeplerorK2(file):
     
     Output:
     
-    int: 1 for Kepler mission or 2 for K2 mission
+    int: 1 for Kepler mission or 2 for K2 mission light curves, 2.1 for EVEREST detrended light curves
     
     '''
-   
-    if glob('ktwo*')==[]:
-        return 1
-    elif glob('kplr*')==[]:
+    if 'ktwo' in file:
         return 2
+    elif 'kplr' in file:
+        return 1
 
 def chisq(data, error, model):
     '''model
@@ -172,12 +171,12 @@ def GetLCfits(file):
 
     time = data_rec['TIME']
     time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
-    print(file)
-    print(KeplerorK2(file))
+  
     if KeplerorK2(file)==1: 
         quarter_num = header['QUARTER']
     elif KeplerorK2(file)==2: 
         quarter_num = header['CAMPAIGN']
+
     print(quarter_num)
     flux_raw = data_rec['SAP_FLUX']
     error = data_rec['SAP_FLUX_ERR']
@@ -1061,7 +1060,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         
         if KeplerorK2(file)==2: objectid = str(int( file[file.find('ktwo')+4:file.find('-')] ))        
         elif KeplerorK2(file)==1:objectid = str(int( file[file.find('kplr')+4:file.find('-')] ))
-        
+        elif KeplerorK2(file)==2.1:objectid = str(int( file[file.find('llc')+4:file.find('-')] ))
         qtr, time, lcflag, exptime, flux_raw, error, time_res, quarter_num = GetLCfits(file)
 
         # put flare output in to a set of subdirectories.
@@ -1417,9 +1416,9 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-2010203174610_slc.fits'): 
-          RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=True, writeout=True)
-          True
+        if fnmatch(myfile,'*llc.fits'): 
+          RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=False, writeout=True)
+         
     import timeit
     #print(timeit.timeit("FlagCuts()", setup="from __main__ import FlagCuts"))
      
