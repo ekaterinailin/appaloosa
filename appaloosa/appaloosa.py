@@ -972,7 +972,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     
     
     std = np.nanmedian(error)
-    dur_fake, ampl_fake = FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=True)
+    dur_fake, ampl_fake = FakeFlaresDist(std,ampl,dur,nfake,mode='rand',scatter=True)
 
 
 
@@ -1304,7 +1304,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                                             error[dl[i]:dr[i]]/medflux, lcflag[dl[i]:dr[i]],
                                             t_tmp1, t_tmp2,
                                             savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
-                                            outfile=outfile + '_' +str(ninj) +'.fake', display=display,#added ninj = Number of INJection
+                                            outfile=outfile + '_' +str(ninj) +'.fake', display=display,#added ninj = Number of INJections
                                             nfake=nfake, debug=debug)
 
                 ed_fake_tot=np.append(ed_fake_tot, ed_fake_ninj)
@@ -1421,8 +1421,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     if display is True:
         print(str(len(istart))+' flare candidates found')
     
-        plt.figure()
-        plt.plot(time, flux_gap, 'k', alpha=0.7, lw=0.8)
+        plt.subplots(figsize=(5,1))
+        plt.errorbar(time, flux_gap, yerr=error, color='k',alpha=0.7, lw=0.2,ecolor='g')
 
         # for g in dl:
         #     plt.scatter(time[g], flux_gap[g], color='blue', marker='v',s=40)
@@ -1431,10 +1431,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         # plt.scatter(time[istop], flux_gap[istop], color='orange', marker='p',s=60, alpha=0.5)
         for g in range(len(istart)):
             plt.plot(time[istart[g]:istop[g]+1],
-                     flux_gap[istart[g]:istop[g]+1],color='red', lw=1)
+                     flux_gap[istart[g]:istop[g]+1],color='red', lw=0.2)
 
-        plt.plot(time, flux_model, 'blue', lw=3)
-
+        plt.plot(time, flux_model, 'blue', lw=0.2)
+     
 
         plt.xlabel('Time (BJD - 2454833 days)')
         plt.ylabel(r'Flux ($e^-$ sec$^{-1}$)')
@@ -1443,6 +1443,31 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         xdur0 = np.nanmin(time) + xdur/2.
         xdur1 = np.nanmin(time) + xdur/2. + 2.6
         plt.xlim(xdur0, xdur1) # only plot a chunk of the data
+        
+        options, RGB = KeplerLCflags()
+       
+        
+  
+       
+        events=np.zeros(len(lcflag)) #lcflag stores SAP_QUALITY flags
+        events_colors=np.zeros((len(lcflag),3)) #information on the color coding of the present flag
+        events_colors[:]=(0,0,0)#default color
+        
+        #convert flags into colors
+        for x in range(0,len(lcflag)):
+            fl=lcflag[x]
+            if fl!=0: 
+                events[x]=flux_gap[x] #puts the marker where the light curve is
+                if fl in options: #if the flag bit is set
+                    name, color = options[fl] #returns the flag description and the corresponding color
+                    events_colors[x]=color
+                else: events_colors[x]=(0,0,0)#black for unknown flag bits or better RAISE A warning?
+                
+                        
+
+        
+        plt.scatter(time,events,s=3,c=events_colors, marker='o')
+
 
         xdurok = np.where((time >= xdur0) & (time <= xdur1))
         plt.ylim(np.nanmin(flux_gap[xdurok]), np.nanmax(flux_gap[xdurok]))
@@ -1526,6 +1551,116 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     return
 
+
+def KeplerLCflags():
+    '''
+
+    Stores the SAP_QUALITY data flags and produces a colour legend in a separate .pdf file. 
+
+    Input:
+    
+    none
+
+
+    Output:
+
+    options - dict, the key is the flag bit as int the item is a tuple (flag label, RGB color)
+    RGB - list of tuples that are RGB colors in format (r,g,b)
+
+
+    '''
+    #import matplotlib.pyplot as plt
+    from matplotlib import colors as mcolors
+    #import numpy as np
+    import collections
+
+
+    #Produce a rainbow-ish colormap
+    clr=[]
+    for i in range(0,21):
+        r=float(i)/21.
+        if i%2==0: b=1.0
+        else: b=0.5
+        g=1.0
+        clr.append((r,g,b))
+   
+    clr= mcolors.hsv_to_rgb(clr) #helps with the rainbow
+    
+    #***I am sure there is a better way than inserting the colors by hand...***
+    options={1: ('Attitude Tweak', clr[0]),
+                    2: ('Safe Mode',clr[1]),
+                    4: ('Spacecraft is in coarse point. It is set manually to pad not-infine point data.',clr[2]),
+                    8: ('Spacecraft is in Earth point. The first real cadence after Earth püoint is marked.',clr[3]),
+                    16: ('Reaction wheel zero crossing',clr[4]),
+                    32: ('Reaction wheel desaturation event',clr[5]),
+                    64: ('Agrabrightening detected across multiple channels on this cadence.',clr[6]),
+                    128: ('Cosmic ray was found and corrected in optimal aperure pixel.',clr[7]),
+                    256: ('Manual exclude. The cadence was excluded because of an anomaly.',clr[8]),
+                    512: ('This bit is unused by Kepler',clr[9]),
+                    1024: ('SPSD detected. This bit is flagged on the last non-gapped cadence before the maximum positive change to the detected SPSD',clr[10]),
+                    2048: ('Impulsive outlier removed before cotrending.',clr[11]),
+                    4096: ('Agrabrightening event on specified CCD mod/out detected.',clr[12]),
+                    8192: ('Cosmic ray detected in collateral pixel row or column in optimal aperture',clr[13]),
+                    16384: ('Detector anomaly flag was raised',clr[14]),
+                    32768: ('Spacecraft is not in fine point',clr[15]),
+                    65536: ('No data collected',clr[16]),
+                    131072: ('Rolling band detected in optimal aperture',clr[17]),
+                    262144: ('Rolling band detected in full mask',clr[18]),
+                    545288: ('Possible thruster firing. Not set in Kepler data.',clr[19]),
+                    1048576: ('Thruster firing. Not set in Kepler data.',clr[20])}
+
+    #Produce an order to get the colors ordered in the end. 
+    #This is a workaround because I started out with dictionaries in the beginning and I need to return a dict in the end as well.
+    #***Maybe turn the order in reverse: Use lists first and then compile them into a dict?***
+    options=collections.OrderedDict(sorted(options.items()))#sort by key
+
+    lis=[]#I also have to decompose the dict
+    for key in options:
+        lis.append(options[key])
+        
+    Labels,RGB =zip(*lis)
+    colors = dict(lis)
+
+
+
+    #copy and paste this matplotlib example: https://matplotlib.org/examples/color/named_colors.html
+
+    n = len(Labels)#number of elements in table
+    ncols = 1
+    nrows = n // ncols + 1
+    fig, ax = plt.subplots(figsize=(8, 5))
+    # Get height and width
+    X, Y = fig.get_dpi() * fig.get_size_inches()
+    h = Y / (nrows + 1)
+    w = X / ncols
+
+    for i, name in enumerate(Labels):#iterate over list indices AND the list items simultaneously
+        col = i % ncols
+        row = i // ncols
+        y = Y - (row * h) - h
+
+        xi_line = w * (col + 0.05)
+        xf_line = w * (col + 0.25)
+        xi_text = w * (col + 0.3)
+
+        ax.text(xi_text, y, name, fontsize=(h * 0.8),
+                horizontalalignment='left',
+                verticalalignment='center')
+        ax.hlines(y + h * 0.1, xi_line, xf_line, color=RGB[i], linewidth=(h * 0.6)) #here the color coding goes in
+
+    ax.set_xlim(0, X)
+    ax.set_ylim(0, Y)
+    ax.set_axis_off()
+
+    fig.subplots_adjust(left=0, right=1,
+                        top=1, bottom=0,
+                        hspace=0, wspace=0)
+
+    plt.savefig('Table_of_Kepler_LC_Flags.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
+    plt.close()
+    return options, RGB
+
+
 #file:///work1/eilin/data/kplr009726699-2010203174610_slc.fits
 # let this file be called from the terminal directly. e.g.:
 # $python appaloosa.py folder
@@ -1539,7 +1674,7 @@ if __name__ == "__main__":
     #print(data)
     os.chdir(str(sys.argv[1]))
     for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'kplr009726699-2013098041711_llc.fits'): 
+        if fnmatch(myfile,'*llc.fits'): 
           RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=True, writeout=True)
           
 
