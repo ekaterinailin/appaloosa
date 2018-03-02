@@ -14,6 +14,7 @@ import detrend
 from gatspy.periodic import LombScargleFast
 import warnings
 import matplotlib.pyplot as plt
+import pandas as pd
 from pandas import rolling_std #Moving standard deviation. By default, the result is set to the right edge of the window. This can be changed to the center of the window by setting center=True.
 from scipy import stats
 from scipy.optimize import curve_fit
@@ -27,37 +28,20 @@ matplotlib.rcParams.update({'font.family':'sans-serif'})
 matplotlib.rcParams.update({'font.sans-serif':'Arial'})
 
 # from rayleigh import RayleighPowerSpectrum
+
+
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+# DATA READING FUNCTIONS:
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
 try:
     import MySQLdb
     haz_mysql = True
 except ImportError:
     haz_mysql = False
-
-def KeplerorK2(file):
-    
-    '''
-    Checks if we are dealing with Kepler or K2 data in a particular file
-    
-    Input:
-    
-    string: filename
-    
-    Output:
-    
-    int: 1 for Kepler mission or 2 for K2 mission light curves, 2.1 for EVEREST detrended light curves
-    
-    '''
-    if 'ktwo' in file:
-        return 2
-    elif 'kplr' in file:
-        return 1
-
-def chisq(data, error, model):
-    '''model
-    Compute the normalized chi square statistic:
-    chisq =  1 / N * SUM(i) ( (data(i) - model(i))/error(i) )^2
-    '''
-    return np.sum( ((data - model) / error)**2.0 ) / np.size(data)
 
 
 def GetLCdb(objectid, type='', readfile=False,
@@ -174,7 +158,7 @@ def GetLCfits(file):
   
     if KeplerorK2(file)==1: 
         quarter_num = header['QUARTER']
-    elif KeplerorK2(file)==2: 
+    elif ((KeplerorK2(file)==2) or (KeplerorK2(file)==2.1)): 
         quarter_num = header['CAMPAIGN']
 
     print(quarter_num)
@@ -259,9 +243,17 @@ def GetLCeverest(file, win_size=3):
 
     hdu = fits.open(file)
     data_rec = hdu[1].data
+    header = hdu[0].header
+    headerone = hdu[1].header
+
+
+    time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
+  
+    quarter_num = header['CAMPAIGN']
 
     time = np.array(data_rec['TIME'])
     flux_raw = np.array(data_rec['FLUX'])
+    #flux_raw = np.array(data_rec['FCOR'])
     isrl = np.isfinite(flux_raw)
 
     qtr = np.zeros_like(time[isrl])
@@ -278,7 +270,7 @@ def GetLCeverest(file, win_size=3):
 
     error = np.ones_like(time[isrl]) * np.nanmedian(rolling_std(flux_raw[isrl], win_size, center=True))
     #ones_like: Return an array of ones with the same shape and type as a given array.
-    return qtr, time[isrl], qual[isrl], exptime, flux_raw[isrl], error
+    return qtr, time[isrl], qual[isrl], exptime, flux_raw[isrl], error, quarter_num, time_res
 
 
 def GetLCtxt(file, skiprows=1):
@@ -351,6 +343,249 @@ def OneCadence(data):
 
     data_out = data[indx,:]
     return data_out
+
+
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+# VARIOUS HELPER AND EXPERIMENTAL FUNCTIONS
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
+def KeplerorK2(file):
+    
+    '''
+    Checks if we are dealing with Kepler or K2 data in a particular file
+    
+    Input:
+    
+    string: filename
+    
+    Output:
+    
+    int: 1 for Kepler mission or 2 for K2 mission light curves, 2.1 for EVEREST detrended light curves
+    
+    '''
+    if 'ktwo' in file:
+        return 2
+    elif 'kplr' in file:
+        return 1
+    elif 'everest' in file:
+        return 2.1
+
+
+def chisq(data, error, model):
+    '''model
+    Compute the normalized chi square statistic:
+    chisq =  1 / N * SUM(i) ( (data(i) - model(i))/error(i) )^2
+    '''
+    return np.sum( ((data - model) / error)**2.0 ) / np.size(data)
+
+
+
+def FlarePer(time, minper=0.1, maxper=30.0, nper=20000):
+    '''
+    Look for periodicity in the flare occurrence times. Could be due to:
+    a) mis-identified periodic things (e.g. heartbeat stars)
+    b) crazy binary star flaring things
+    c) flares on a rotating star
+    d) bugs in code
+    e) aliens
+
+    '''
+
+    # use energy = 1 for flare times.
+    # This will create something like the window function
+    energy = np.ones_like(time)
+
+    # Use Jake Vanderplas faster version!
+    pgram = LombScargleFast(fit_offset=False)
+    pgram.optimizer.set(period_range=(minper,maxper))
+
+    pgram = pgram.fit(time, energy - np.nanmedian(energy))
+
+    df = (1./minper - 1./maxper) / nper
+    f0 = 1./maxper
+    pwr = pgram.score_frequency_grid(f0, df, nper)
+
+    freq = f0 + df * np.arange(nper)
+    per = 1./freq
+
+    pk = per[np.argmax(pwr)] # peak period
+    pp = np.max(pwr) # peak period power
+
+    return pk, pp
+
+def EquivDur(time, flux):
+    '''
+    Compute the Equivalent Duration of an event. This is simply the area
+    under the flare, in relative flux units.
+
+    Flux must be array in units of zero-centered RELATIVE FLUX
+
+    Time must be array in units of DAYS
+
+    Output has units of SECONDS
+    '''
+
+    p = np.trapz(flux, x=(time * 60.0 * 60.0 * 24.0))
+    return p
+
+def MeasureS2N(flux, error, model, istart=-1, istop=-1):
+    '''
+    this MAY NOT be something i want....
+    '''
+    if (istart < 0): istart = 0 
+    if (istop < 0):istop = len(flux)
+
+    flareflux = flux[istart:istop+1]
+    modelflux = model[istart:istop+1]
+
+    s2n = np.sum(np.sqrt((flareflux) / (flareflux + modelflux)))
+    return s2n
+
+
+def FlagCuts(flags, bad_flags = (16, 128, 2048), returngood=True):
+
+    '''
+    return the indexes that pass flag cuts
+
+    Ethan says cut out [16, 128, 2048], can add more later.
+    '''
+
+    # convert flag array to type int, just in case
+    flags_int = np.array(flags, dtype='int')
+    # empty array to hold places where bad flags exist
+    bad = np.zeros_like(flags)
+
+    # these are the specific flags to reject on
+    # NOTE: == 2**[4, 7, 11]
+    # bad_flgs = [16, 128, 2048]
+
+    # step thru each of the bitwise flags, find where exist
+    for k in bad_flags:
+        bad = bad + np.bitwise_and(flags_int, k)
+
+    # find places in array where NO bad flags are set
+    if returngood is True:
+        good = np.where((bad < 1))[0]
+        return good
+    else:
+        return bad
+
+def KeplerLCflags():
+    '''
+
+    Stores the SAP_QUALITY data flags and produces a colour legend in a separate .pdf file. 
+
+    Input:
+    
+    none
+
+
+    Output:
+
+    options - dict, the key is the flag bit as int the item is a tuple (flag label, RGB color)
+    RGB - list of tuples that are RGB colors in format (r,g,b)
+
+
+    '''
+    #import matplotlib.pyplot as plt
+    from matplotlib import colors as mcolors
+    #import numpy as np
+    import collections
+
+
+    #Produce a rainbow-ish colormap
+    clr=[]
+    for i in range(0,21):
+        r=float(i)/21.
+        if i%2==0: b=1.0
+        else: b=0.5
+        g=1.0
+        clr.append((r,g,b))
+   
+    clr= mcolors.hsv_to_rgb(clr) #helps with the rainbow
+    
+    #***I am sure there is a better way than inserting the colors by hand...***
+    options={1: ('Attitude Tweak', clr[0]),
+                    2: ('Safe Mode',clr[1]),
+                    4: ('Spacecraft is in coarse point. It is set manually to pad not-infine point data.',clr[2]),
+                    8: ('Spacecraft is in Earth point. The first real cadence after Earth püoint is marked.',clr[3]),
+                    16: ('Reaction wheel zero crossing',clr[4]),
+                    32: ('Reaction wheel desaturation event',clr[5]),
+                    64: ('Agrabrightening detected across multiple channels on this cadence.',clr[6]),
+                    128: ('Cosmic ray was found and corrected in optimal aperure pixel.',clr[7]),
+                    256: ('Manual exclude. The cadence was excluded because of an anomaly.',clr[8]),
+                    512: ('This bit is unused by Kepler',clr[9]),
+                    1024: ('SPSD detected. This bit is flagged on the last non-gapped cadence before the maximum positive change to the detected SPSD',clr[10]),
+                    2048: ('Impulsive outlier removed before cotrending.',clr[11]),
+                    4096: ('Agrabrightening event on specified CCD mod/out detected.',clr[12]),
+                    8192: ('Cosmic ray detected in collateral pixel row or column in optimal aperture',clr[13]),
+                    16384: ('Detector anomaly flag was raised',clr[14]),
+                    32768: ('Spacecraft is not in fine point',clr[15]),
+                    65536: ('No data collected',clr[16]),
+                    131072: ('Rolling band detected in optimal aperture',clr[17]),
+                    262144: ('Rolling band detected in full mask',clr[18]),
+                    545288: ('Possible thruster firing. Not set in Kepler data.',clr[19]),
+                    1048576: ('Thruster firing. Not set in Kepler data.',clr[20])}
+
+    #Produce an order to get the colors ordered in the end. 
+    #This is a workaround because I started out with dictionaries in the beginning and I need to return a dict in the end as well.
+    #***Maybe turn the order in reverse: Use lists first and then compile them into a dict?***
+    options=collections.OrderedDict(sorted(options.items()))#sort by key
+
+    lis=[]#I also have to decompose the dict
+    for key in options:
+        lis.append(options[key])
+        
+    Labels,RGB =zip(*lis)
+    colors = dict(lis)
+
+
+
+    #copy and paste this matplotlib example: https://matplotlib.org/examples/color/named_colors.html
+
+    n = len(Labels)#number of elements in table
+    ncols = 1
+    nrows = n // ncols + 1
+    fig, ax = plt.subplots(figsize=(8, 5))
+    # Get height and width
+    X, Y = fig.get_dpi() * fig.get_size_inches()
+    h = Y / (nrows + 1)
+    w = X / ncols
+
+    for i, name in enumerate(Labels):#iterate over list indices AND the list items simultaneously
+        col = i % ncols
+        row = i // ncols
+        y = Y - (row * h) - h
+
+        xi_line = w * (col + 0.05)
+        xf_line = w * (col + 0.25)
+        xi_text = w * (col + 0.3)
+
+        ax.text(xi_text, y, name, fontsize=(h * 0.8),
+                horizontalalignment='left',
+                verticalalignment='center')
+        ax.hlines(y + h * 0.1, xi_line, xf_line, color=RGB[i], linewidth=(h * 0.6)) #here the color coding goes in
+
+    ax.set_xlim(0, X)
+    ax.set_ylim(0, Y)
+    ax.set_axis_off()
+
+    fig.subplots_adjust(left=0, right=1,
+                        top=1, bottom=0,
+                        hspace=0, wspace=0)
+
+    plt.savefig('Table_of_Kepler_LC_Flags.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
+    plt.close()
+    return options, RGB
+
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+# FLARE IDENTIFICATION FUNCTIONS:
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
 
 
 def DetectCandidate(time, flux, error, flags, model,
@@ -513,49 +748,6 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
         return bin_out
 
 
-def FlagCuts(flags, bad_flags = (16, 128, 2048), returngood=True):
-
-    '''
-    return the indexes that pass flag cuts
-
-    Ethan says cut out [16, 128, 2048], can add more later.
-    '''
-
-    # convert flag array to type int, just in case
-    flags_int = np.array(flags, dtype='int')
-    # empty array to hold places where bad flags exist
-    bad = np.zeros_like(flags)
-
-    # these are the specific flags to reject on
-    # NOTE: == 2**[4, 7, 11]
-    # bad_flgs = [16, 128, 2048]
-
-    # step thru each of the bitwise flags, find where exist
-    for k in bad_flags:
-        bad = bad + np.bitwise_and(flags_int, k)
-
-    # find places in array where NO bad flags are set
-    if returngood is True:
-        good = np.where((bad < 1))[0]
-        return good
-    else:
-        return bad
-
-
-def EquivDur(time, flux):
-    '''
-    Compute the Equivalent Duration of an event. This is simply the area
-    under the flare, in relative flux units.
-
-    Flux must be array in units of zero-centered RELATIVE FLUX
-
-    Time must be array in units of DAYS
-
-    Output has units of SECONDS
-    '''
-
-    p = np.trapz(flux, x=(time * 60.0 * 60.0 * 24.0))
-    return p
 
 
 def FlareStats(time, flux, error, model, istart=-1, istop=-1,
@@ -687,52 +879,6 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
         return params
 
 
-def MeasureS2N(flux, error, model, istart=-1, istop=-1):
-    '''
-    this MAY NOT be something i want....
-    '''
-    if (istart < 0): istart = 0 
-    if (istop < 0):istop = len(flux)
-
-    flareflux = flux[istart:istop+1]
-    modelflux = model[istart:istop+1]
-
-    s2n = np.sum(np.sqrt((flareflux) / (flareflux + modelflux)))
-    return s2n
-
-
-def FlarePer(time, minper=0.1, maxper=30.0, nper=20000):
-    '''
-    Look for periodicity in the flare occurrence times. Could be due to:
-    a) mis-identified periodic things (e.g. heartbeat stars)
-    b) crazy binary star flaring things
-    c) flares on a rotating star
-    d) bugs in code
-    e) aliens
-
-    '''
-
-    # use energy = 1 for flare times.
-    # This will create something like the window function
-    energy = np.ones_like(time)
-
-    # Use Jake Vanderplas faster version!
-    pgram = LombScargleFast(fit_offset=False)
-    pgram.optimizer.set(period_range=(minper,maxper))
-
-    pgram = pgram.fit(time, energy - np.nanmedian(energy))
-
-    df = (1./minper - 1./maxper) / nper
-    f0 = 1./maxper
-    pwr = pgram.score_frequency_grid(f0, df, nper)
-
-    freq = f0 + df * np.arange(nper)
-    per = 1./freq
-
-    pk = per[np.argmax(pwr)] # peak period
-    pp = np.max(pwr) # peak period power
-
-    return pk, pp
 
 
 def MultiFind(time, flux, error, flags, mode=3,
@@ -791,7 +937,7 @@ def MultiFind(time, flux, error, flags, mode=3,
 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=3, N3=2,
+    isflare = FINDflare(flux_diff, error, N1=2, N2=2, N3=3,
                         returnbinary=True, avg_std=True)
 
 
@@ -818,7 +964,7 @@ def MultiFind(time, flux, error, flags, mode=3,
         istop[to1] += 1
 
     if debug is True:
-        plt.figure()
+        plt.figure(figsize=(12,6))
         plt.scatter(time, flux, alpha=0.5)
         plt.plot(time,flux_model, c='black')
         plt.scatter(time[cand1], flux[cand1], c='red')
@@ -845,6 +991,13 @@ def MatchedFilterFind(time, flux, signalfwhm=0.01):
     return
 '''
 
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+# ALL FAKE FLARE FUNCTIONS:
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+
+
 def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
     
     '''
@@ -857,10 +1010,10 @@ def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
     
     
     std: standard deviation of quiescent light curve 
-    ampl: amplitude range in relative (only for 'equidist') flux units 
-    dur: duration range (only for 'equidist') in minutes
+    ampl: amplitude range in relative (only for 'equidist' mode) flux units 
+    dur: duration range (only for 'equidist' mode) in minutes
     nfake: number of fake flares to be created
-    mode: distribution of fake flares in (duration,amplitude) spaced, default='hawley2014'
+    mode: distribution of fake flares in (duration,amplitude) space, default='hawley2014'
     scatter: saves a scatter plot of the distribution for the injected sample, default='False'
     
     Return:
@@ -926,6 +1079,7 @@ def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
     
         
     return dur_fake, ampl_fake    
+
 
 def FakeFlares(time, flux, error, flags, tstart, tstop,
                nfake=10000, npass=1, ampl=(0.1,100), dur=(0.5,60),
@@ -1106,6 +1260,12 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 
     return ed_bin_center, rec_bin, ed_fake, rec_fake
 
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+# MAIN WRAPPER FUNCTION
+#-----------------------------------------------------------------------------------------------------------------------------
+#-----------------------------------------------------------------------------------------------------------------------------
+
 
 # objectid = '9726699'  # GJ 1243
 def RunLC(file='', objectid='', ftype='sap', lctype='',
@@ -1230,7 +1390,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     ######################
     elif dbmode is 'everest':
         objectid = str(int(file[file.find('everest')+15:file.find('-')]))
-        qtr, time, lcflag, exptime, flux_raw, error = GetLCeverest(file)
+        qtr, time, lcflag, exptime, flux_raw, error, quarter_num, time_res = GetLCeverest(file)
 
         # put the output in the local research dir
         fldr = objectid[0:3]
@@ -1357,7 +1517,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             
             #Save the recovery rate plot data as txt file for future compilations:
             
-            os.chdir(str(sys.argv[1])) #go where the data are stored
+            #os.chdir(str(sys.argv[1])) #go where the data are stored
+            os.chdir(file)
             rec_rate = open(file+'recrate.txt', 'w')
             for k in range(0,nbins):
                 if ed_bin_center[k]!='nan' and frac_rec_tot[k]!='nan':
@@ -1485,16 +1646,26 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         
     
     if writeout is True:
-        os.chdir(str(sys.argv[1])) #go where the data are stored
+        #os.chdir(str(sys.argv[1])) #go where the data are stored
+        os.chdir('/home/ekaterina/Documents/appaloosa')
         if os.path.isfile('flarelist.txt') == False: #check if output file already exists
             with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
                 firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Quarter \t Total Exposure Time of LC in Days \t Time Resolution in [min] \t BJD-2454833 days \n', 'utf-8') #write a header line
                 myfile.write(firstline)    #write it into table
         with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
             line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(quarter_num) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\t' + str(time[0]) + '\n' #insert output params
+
             print(line)
             myfile.write(line)
             myfile.close()
+
+		#Write data frames to file for later processing to FFDs and such.
+        df1 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model})
+        df2 = pd.DataFrame({ 'istart':istart,'istop':istop})
+        df1.to_csv(objectid + '_flux.csv')
+        df2.to_csv(objectid + '_flares.csv')
+
+
     '''
     #-- IF YOU WANT TO PLAY WITH THE WAVELET STUFF MORE, WORK HERE
     test_model = detrend.WaveletSmooth(time, flux_gap)
@@ -1558,129 +1729,23 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     return
 
 
-def KeplerLCflags():
-    '''
 
-    Stores the SAP_QUALITY data flags and produces a colour legend in a separate .pdf file. 
-
-    Input:
-    
-    none
-
-
-    Output:
-
-    options - dict, the key is the flag bit as int the item is a tuple (flag label, RGB color)
-    RGB - list of tuples that are RGB colors in format (r,g,b)
-
-
-    '''
-    #import matplotlib.pyplot as plt
-    from matplotlib import colors as mcolors
-    #import numpy as np
-    import collections
-
-
-    #Produce a rainbow-ish colormap
-    clr=[]
-    for i in range(0,21):
-        r=float(i)/21.
-        if i%2==0: b=1.0
-        else: b=0.5
-        g=1.0
-        clr.append((r,g,b))
-   
-    clr= mcolors.hsv_to_rgb(clr) #helps with the rainbow
-    
-    #***I am sure there is a better way than inserting the colors by hand...***
-    options={1: ('Attitude Tweak', clr[0]),
-                    2: ('Safe Mode',clr[1]),
-                    4: ('Spacecraft is in coarse point. It is set manually to pad not-infine point data.',clr[2]),
-                    8: ('Spacecraft is in Earth point. The first real cadence after Earth püoint is marked.',clr[3]),
-                    16: ('Reaction wheel zero crossing',clr[4]),
-                    32: ('Reaction wheel desaturation event',clr[5]),
-                    64: ('Agrabrightening detected across multiple channels on this cadence.',clr[6]),
-                    128: ('Cosmic ray was found and corrected in optimal aperure pixel.',clr[7]),
-                    256: ('Manual exclude. The cadence was excluded because of an anomaly.',clr[8]),
-                    512: ('This bit is unused by Kepler',clr[9]),
-                    1024: ('SPSD detected. This bit is flagged on the last non-gapped cadence before the maximum positive change to the detected SPSD',clr[10]),
-                    2048: ('Impulsive outlier removed before cotrending.',clr[11]),
-                    4096: ('Agrabrightening event on specified CCD mod/out detected.',clr[12]),
-                    8192: ('Cosmic ray detected in collateral pixel row or column in optimal aperture',clr[13]),
-                    16384: ('Detector anomaly flag was raised',clr[14]),
-                    32768: ('Spacecraft is not in fine point',clr[15]),
-                    65536: ('No data collected',clr[16]),
-                    131072: ('Rolling band detected in optimal aperture',clr[17]),
-                    262144: ('Rolling band detected in full mask',clr[18]),
-                    545288: ('Possible thruster firing. Not set in Kepler data.',clr[19]),
-                    1048576: ('Thruster firing. Not set in Kepler data.',clr[20])}
-
-    #Produce an order to get the colors ordered in the end. 
-    #This is a workaround because I started out with dictionaries in the beginning and I need to return a dict in the end as well.
-    #***Maybe turn the order in reverse: Use lists first and then compile them into a dict?***
-    options=collections.OrderedDict(sorted(options.items()))#sort by key
-
-    lis=[]#I also have to decompose the dict
-    for key in options:
-        lis.append(options[key])
-        
-    Labels,RGB =zip(*lis)
-    colors = dict(lis)
-
-
-
-    #copy and paste this matplotlib example: https://matplotlib.org/examples/color/named_colors.html
-
-    n = len(Labels)#number of elements in table
-    ncols = 1
-    nrows = n // ncols + 1
-    fig, ax = plt.subplots(figsize=(8, 5))
-    # Get height and width
-    X, Y = fig.get_dpi() * fig.get_size_inches()
-    h = Y / (nrows + 1)
-    w = X / ncols
-
-    for i, name in enumerate(Labels):#iterate over list indices AND the list items simultaneously
-        col = i % ncols
-        row = i // ncols
-        y = Y - (row * h) - h
-
-        xi_line = w * (col + 0.05)
-        xf_line = w * (col + 0.25)
-        xi_text = w * (col + 0.3)
-
-        ax.text(xi_text, y, name, fontsize=(h * 0.8),
-                horizontalalignment='left',
-                verticalalignment='center')
-        ax.hlines(y + h * 0.1, xi_line, xf_line, color=RGB[i], linewidth=(h * 0.6)) #here the color coding goes in
-
-    ax.set_xlim(0, X)
-    ax.set_ylim(0, Y)
-    ax.set_axis_off()
-
-    fig.subplots_adjust(left=0, right=1,
-                        top=1, bottom=0,
-                        hspace=0, wspace=0)
-
-    plt.savefig('Table_of_Kepler_LC_Flags.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
-    plt.close()
-    return options, RGB
 
 
 #file:///work1/eilin/data/kplr009726699-2010203174610_slc.fits
 # let this file be called from the terminal directly. e.g.:
 # $python appaloosa.py folder
-if __name__ == "__main__":
-    import sys
+#if __name__ == "__main__":
+#    import sys
 
-    from fnmatch import fnmatch
-    import os
-    #data=GetLCdb(objectid='9726699', type='', readfile=False,
-       #   savefile=False, exten = '.lc.gz',
-        #  onecadence=False)
-    #print(data)
-    os.chdir(str(sys.argv[1]))
-    for myfile in os.listdir(str(sys.argv[1])):
-        if fnmatch(myfile,'*llc.fits'): 
-          RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=True, writeout=True)
+#    from fnmatch import fnmatch
+#    import os
+#    #data=GetLCdb(objectid='9726699', type='', readfile=False,
+#       #   savefile=False, exten = '.lc.gz',
+#        #  onecadence=False)
+#    #print(data)
+#	#os.chdir(str(sys.argv[1]))
+##    for myfile in os.listdir(str(sys.argv[1])):
+##        if fnmatch(myfile,'*llc.fits'): 
+#	RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=False, writeout=True)
 
