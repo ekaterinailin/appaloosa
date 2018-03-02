@@ -252,8 +252,8 @@ def GetLCeverest(file, win_size=3):
     quarter_num = header['CAMPAIGN']
 
     time = np.array(data_rec['TIME'])
-    flux_raw = np.array(data_rec['FLUX'])
-    #flux_raw = np.array(data_rec['FCOR'])
+    #flux_raw = np.array(data_rec['FLUX'])
+    flux_raw = np.array(data_rec['FCOR'])
     isrl = np.isfinite(flux_raw)
 
     qtr = np.zeros_like(time[isrl])
@@ -937,7 +937,7 @@ def MultiFind(time, flux, error, flags, mode=3,
 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=2, N2=2, N3=3,
+    isflare = FINDflare(flux_diff, error, N1=3, N2=2, N3=5,
                         returnbinary=True, avg_std=True)
 
 
