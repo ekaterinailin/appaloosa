@@ -937,7 +937,7 @@ def MultiFind(time, flux, error, flags, mode=3,
 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=3, N2=2, N3=5,
+    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=7,
                         returnbinary=True, avg_std=True)
 
 
