@@ -515,7 +515,7 @@ def KeplerLCflags():
                     16: ('Reaction wheel zero crossing',clr[4]),
                     32: ('Reaction wheel desaturation event',clr[5]),
                     64: ('Agrabrightening detected across multiple channels on this cadence.',clr[6]),
-                    128: ('Cosmic ray was found and corrected in optimal aperure pixel.',clr[7]),
+                    128: ('Cosmic ray was found and corrected in optimal aperture pixel.',clr[7]),
                     256: ('Manual exclude. The cadence was excluded because of an anomaly.',clr[8]),
                     512: ('This bit is unused by Kepler',clr[9]),
                     1024: ('SPSD detected. This bit is flagged on the last non-gapped cadence before the maximum positive change to the detected SPSD',clr[10]),
