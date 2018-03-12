@@ -708,6 +708,8 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
     ca = flux - med_i
     cb = np.abs(flux - med_i) / sig_i
     cc = np.abs(flux - med_i - error) / sig_i
+#    negative_slope = (ca[:-1]-ca[1:]) > 0
+#    negative_slope = np.append(negative_slope,False)
 
     if debug is True:
         print("DEBUG: ")
@@ -716,7 +718,7 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
         print(sum(cc>N2))
 
     # pass cuts from Eqns 3a,b,c
-    ctmp = np.where((ca > 0) & (cb > N1) & (cc > N2))
+    ctmp = np.where((ca > 0) & (cb > N1) & (cc > N2))# & negative_slope)
 
     cindx = np.zeros_like(flux)
     cindx[ctmp] = 1
@@ -933,11 +935,11 @@ def MultiFind(time, flux, error, flags, mode=3,
         signalfwhm = dt * 2
         ftime = np.arange(0, 2, dt)
         modelfilter = aflare1(ftime, 1, signalfwhm, 1)
-        flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
-
+        #flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
+        flux_diff = flux - flux_model 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=7,
+    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=1,
                         returnbinary=True, avg_std=True)
 
 
