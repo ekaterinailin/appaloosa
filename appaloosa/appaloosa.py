@@ -935,11 +935,11 @@ def MultiFind(time, flux, error, flags, mode=3,
         signalfwhm = dt * 2
         ftime = np.arange(0, 2, dt)
         modelfilter = aflare1(ftime, 1, signalfwhm, 1)
-        #flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
-        flux_diff = flux - flux_model 
+        flux_diff = signal.convolve(flux - flux_model, modelfilter, mode='same')
+        #flux_diff = flux - flux_model 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=1,
+    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=3,
                         returnbinary=True, avg_std=True)
 
 
