@@ -1357,9 +1357,11 @@ def h5load(store):
 if __name__ == "__main__":
     import sys
     #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
+
     #file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
     #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
     #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=10)
+
     file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
     RunLC(file=file, dbmode='everest', display=True, debug=True,dofake=True, nfake=10)
 
