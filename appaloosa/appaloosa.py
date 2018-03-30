@@ -1164,7 +1164,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         print('Full istart,istop: ',istart_i,istop_i)
         flux_model[dl[i]:dr[i]] = flux_model_i
 
-    df1 = pd.DataFrame({'istart':istart,'istop':istop})
+    df1 = pd.DataFrame({'istart':istart,'istop':istop,'ed68':np.full_like(istart,-99),'ed90':np.full_like(istart,-99)})
     df2 = pd.DataFrame({'flux_model':flux_model,'time':time,'flux_gap':flux_gap,'lcflag':lcflag,'error':error})
     print(df1.head())
     print(df2.head())
@@ -1172,8 +1172,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         print(str(datetime.datetime.now()) + ' FakeFlares started')
     
     if dofake is True:
-        ed68 = []
-        ed90 = []
+
+        dffake = pd.DataFrame()
         for l,r in list(zip(dl,dr)):
             df2temp = df2.iloc[l:r]
             df1temp = df1[(df1.istart > l) & (df1.istop <r)]
@@ -1181,54 +1181,40 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             medflux = df2temp.flux_model.median()# flux needs to be normalized
             t_tmp1 = df2temp.time.iloc[df1temp.istart]
             t_tmp2 = df2temp.time.iloc[df1temp.istop]
- 
-            ed_fake, frac_rec = FakeFlares(df2temp.time, df2temp.flux_gap/medflux - 1.0,
-                                           df2temp.error/medflux, df2temp.lcflag,
-                                           t_tmp1, t_tmp2,
-                                           savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
-                                           outfile=outfile + '.fake', display=display,
-                                           nfake=nfake, debug=debug)
+            dffake_temp = pd.DataFrame()
+            dffake_temp['ed_fake'], dffake_temp['frac_rec'] = FakeFlares(df2temp.time, df2temp.flux_gap/medflux - 1.0,
+                                                               df2temp.error/medflux, df2temp.lcflag,
+                                                               t_tmp1, t_tmp2,
+                                                               savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
+                                                               outfile=outfile + '.fake', display=display,
+                                                               nfake=nfake, debug=debug)
             
-            rl = np.isfinite(frac_rec)
-            frac_rec_sm = wiener(frac_rec[rl], 3)
-            print('TAD: ','\n', ed_fake,'\n',frac_rec,'\n',rl,'\n',frac_rec_sm)
-
+            dffake_temp = dffake_temp.dropna(how='any') 
+            dffake_temp['frac_rec_sm'] = wiener(dffake_temp.frac_rec,3)
             # use this completeness curve to estimate 68% complete
-            x68 = np.where((frac_rec_sm >= 0.68))
-            if len(x68[0])>0:
-                ed68_i = min(ed_fake[rl][x68])
-            else:
-                ed68_i = -99
-
-            x90 = np.where((frac_rec_sm >= 0.90))
-            if len(x90[0])>0:
-                ed90_i = min(ed_fake[rl][x90])
-            else:
-                ed90_i = -99
-
+            ed68_i = dffake_temp.ed_fake[dffake_temp.frac_rec_sm >= .68].min()
+            if np.isnan(ed68_i): ed68_i = -99  
+            ed90_i = dffake_temp.ed_fake[dffake_temp.frac_rec_sm >= .90].min()
+            if np.isnan(ed90_i): ed90_i = -99  
+            df1['ed68'] = ed68_i
+            df1['ed90'] = ed90_i
+          
             if display is True:
                 # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
                 plt.figure()
-                plt.plot(ed_fake, frac_rec, c='k')
-                plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
+                plt.plot(dffake_temp.ed_fake, dffake_temp.frac_rec, c='k')
+                plt.plot(dffake_temp.ed_fake, dffake_temp.frac_rec_sm, c='red', linestyle='dashed', lw=2)
                 plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
                 plt.xlabel('Flare Equivalent Duration (seconds)')
                 plt.ylabel('Fraction of Recovered Flares')
 
-                plt.xlim((0,np.nanmax(ed_fake)))
+                plt.xlim((0,np.nanmax(dffake_temp.ed_fake)))
                 plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
                 plt.show()
     
-            ed68 = np.append(ed68, np.zeros(len(df1temp.istart)) + ed68_i)
-            ed90 = np.append(ed90, np.zeros(len(df1temp.istart)) + ed90_i)
-
     else:
-        # for speed you can skip the fake-flare tests
-        #ed68_i = -199
-        #ed90_i = -199
-        x = np.arange(len(dl), dtype=np.int)
-        ed68 = np.full_like(x, -199)
-        ed90 = np.full_like(x, -199)
+        df1['ed68'] = -199
+        df1['ed90'] = -199
         
         
         # look at the completeness curve
@@ -1361,6 +1347,6 @@ if __name__ == "__main__":
     import sys
     #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
     file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
-    RunLC(file=file, dbmode='everest', display=False, debug=True,dofake=True, nfake=10)
+    RunLC(file=file, dbmode='everest', display=True, debug=True,dofake=True, nfake=10)
 
 
