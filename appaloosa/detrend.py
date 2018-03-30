@@ -110,14 +110,15 @@ def QtrFlat(time, flux, qtr, order=3):
         if (krnl < 10):
             krnl = 10
 
-        #flux_sm = rolling_median(np.array(flux[x], dtype='float'), krnl)
-        flux_sm = flux.iloc[x].rolling(krnl).median()
+        flux_sm = pd.rolling_median(np.array(flux[x], dtype='float'), krnl)
+        #flux_sm = flux.iloc[x].rolling(krnl).median()
         indx = np.isfinite(flux_sm) # get rid of NaN's put in by rolling_median.
 
-        fit = np.polyfit(time.iloc[x][indx], flux_sm[indx], order)
+        #fit = np.polyfit(time.iloc[x][indx], flux_sm[indx], order)
+        fit = np.polyfit(time[x][indx], flux_sm[indx], order)
 
-        flux_flat[x] = flux.iloc[x] - np.polyval(fit, time.iloc[x]) + tot_med
-
+        #flux_flat[x] = flux.iloc[x] - np.polyval(fit, time.iloc[x]) + tot_med
+        flux_flat[x] = flux[x] - np.polyval(fit, time[x]) + tot_med
     return flux_flat
 
 
@@ -358,7 +359,8 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
     # now take N passes of rejection on it
     for k in range(0, numpass):
         # rolling median in this data span with the kernel size
-        flux_i_sm = flux.rolling(nptsmooth, center=True).median()
+        #flux_i_sm = flux.rolling(nptsmooth, center=True).median()
+        flux_i_sm = pd.rolling_median(flux_i, nptsmooth, center=True)
         indx = np.isfinite(flux_i_sm)
 
         if (sum(indx) > 1):
