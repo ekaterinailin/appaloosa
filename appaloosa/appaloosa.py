@@ -14,6 +14,7 @@ import detrend
 from gatspy.periodic import LombScargleFast
 import warnings
 import matplotlib.pyplot as plt
+from pandas import rolling_std
 import pandas as pd
 from scipy import stats
 from scipy.optimize import curve_fit
@@ -886,7 +887,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 
     # QUESTION: how many fake flares can I inject at once?
     # i.e. can I get away with doing fewer re-runs with more flares injected?
-
+    time, flux, error, flags,tstart,tstop = np.array(time), np.array(flux), np.array(error), np.array(flags), np.array(tstart), np.array(tstop)
     std = np.nanmedian(error)
 
     ampl_fake = (np.random.random(nfake) * (ampl[1] - ampl[0]) + ampl[0]) * std
@@ -958,9 +959,8 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     rec_bin_D, _ = np.histogram(ed_fake, bins=nbins)
 
     ed_bin_center = (ed_bin[1:] + ed_bin[:-1])/2.
-
     rec_bin = rec_bin_N / rec_bin_D
-
+    #rec_bin = np.nan_to_num(rec_bin, copy=True)
     if savefile is True:
         # look to see if output folder exists
         # fldr = objectid[0:3]
@@ -1103,8 +1103,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     # uQtr = np.unique(qtr)
     istart = np.array([], dtype='int')
     istop = np.array([], dtype='int')
-    ed68 = []
-    ed90 = []
+
     flux_model = np.zeros_like(flux_gap)
 
     for i in range(0, len(dl)):
@@ -1115,68 +1114,70 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         istart_i, istop_i, flux_model_i = MultiFind(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]],
                                                     error[dl[i]:dr[i]], lcflag[dl[i]:dr[i]],
                                                     gapwindow=gapwindow, debug=debug)
-
+        print('istart,istop: ',istart_i,istop_i)
         # run artificial flare test in this gap
-        if debug is True:
-            print(str(datetime.datetime.now()) + ' FakeFlares started')
+        
 
-        if dofake is True:
-            medflux = np.nanmedian(flux_model_i) # flux needs to be normalized
 
-            if len(istart_i)>0:
-                t_tmp1 = time[dl[i]:dr[i]][istart_i]
-                t_tmp2 = time[dl[i]:dr[i]][istop_i]
-            else:
-                t_tmp1 = []
-                t_tmp2 = []
-            ed_fake, frac_rec = FakeFlares(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]]/medflux - 1.0,
-                                           error[dl[i]:dr[i]]/medflux, lcflag[dl[i]:dr[i]],
-                                           t_tmp1, t_tmp2,
-                                           savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
-                                           outfile=outfile + '_fake.h5', display=display,
-                                           nfake=nfake, debug=debug)
+        istart = np.array(np.append(istart, istart_i + dl[i]), dtype='int')
+        istop = np.array(np.append(istop, istop_i + dl[i]), dtype='int')
+        print('Full istart,istop: ',istart_i,istop_i)
+        flux_model[dl[i]:dr[i]] = flux_model_i
 
-            rl = np.isfinite(frac_rec)
-            frac_rec_sm = wiener(frac_rec[rl], 3)
 
+    df1 = pd.DataFrame({'istart':istart,'istop':istop,'ed68':np.full_like(istart,-99),'ed90':np.full_like(istart,-99)})
+    df2 = pd.DataFrame({'flux_model':flux_model,'time':time,'flux_gap':flux_gap,'lcflag':lcflag,'error':error})
+    print(df1.head())
+    print(df2.head())
+    if debug is True:
+        print(str(datetime.datetime.now()) + ' FakeFlares started')
+    
+    if dofake is True:
+
+        dffake = pd.DataFrame()
+        for l,r in list(zip(dl,dr)):
+            df2temp = df2.iloc[l:r]
+            df1temp = df1[(df1.istart > l) & (df1.istop <r)]
+            print(df1temp.head())
+            medflux = df2temp.flux_model.median()# flux needs to be normalized
+            t_tmp1 = df2temp.time.iloc[df1temp.istart]
+            t_tmp2 = df2temp.time.iloc[df1temp.istop]
+            dffake_temp = pd.DataFrame()
+            dffake_temp['ed_fake'], dffake_temp['frac_rec'] = FakeFlares(df2temp.time, df2temp.flux_gap/medflux - 1.0,
+                                                               df2temp.error/medflux, df2temp.lcflag,
+                                                               t_tmp1, t_tmp2,
+                                                               savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
+                                                               outfile=outfile + '.fake', display=display,
+                                                               nfake=nfake, debug=debug)
+            
+            dffake_temp = dffake_temp.dropna(how='any') 
+            dffake_temp['frac_rec_sm'] = wiener(dffake_temp.frac_rec,3)
             # use this completeness curve to estimate 68% complete
-            x68 = np.where((frac_rec_sm >= 0.68))
-            if len(x68[0])>0:
-                ed68_i = min(ed_fake[rl][x68])
-            else:
-                ed68_i = -99
-
-            x90 = np.where((frac_rec_sm >= 0.90))
-            if len(x90[0])>0:
-                ed90_i = min(ed_fake[rl][x90])
-            else:
-                ed90_i = -99
-
+            ed68_i = dffake_temp.ed_fake[dffake_temp.frac_rec_sm >= .68].min()
+            if np.isnan(ed68_i): ed68_i = -99  
+            ed90_i = dffake_temp.ed_fake[dffake_temp.frac_rec_sm >= .90].min()
+            if np.isnan(ed90_i): ed90_i = -99  
+            df1['ed68'] = ed68_i
+            df1['ed90'] = ed90_i
+          
             if display is True:
                 # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
                 plt.figure()
-                plt.plot(ed_fake, frac_rec, c='k')
-                plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
+                plt.plot(dffake_temp.ed_fake, dffake_temp.frac_rec, c='k')
+                plt.plot(dffake_temp.ed_fake, dffake_temp.frac_rec_sm, c='red', linestyle='dashed', lw=2)
                 plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
                 plt.xlabel('Flare Equivalent Duration (seconds)')
                 plt.ylabel('Fraction of Recovered Flares')
 
-                plt.xlim((0,np.nanmax(ed_fake)))
+                plt.xlim((0,np.nanmax(dffake_temp.ed_fake)))
                 plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
                 plt.show()
-        else:
-            # for speed you can skip the fake-flare tests
-            ed68_i = -199
-            ed90_i = -199
-
-        ed68 = np.append(ed68, np.zeros(len(istart_i)) + ed68_i)
-        ed90 = np.append(ed90, np.zeros(len(istart_i)) + ed90_i)
-
-        istart = np.array(np.append(istart, istart_i + dl[i]), dtype='int')
-        istop = np.array(np.append(istop, istop_i + dl[i]), dtype='int')
-
-        flux_model[dl[i]:dr[i]] = flux_model_i
-
+    
+    else:
+        df1['ed68'] = -199
+        df1['ed90'] = -199
+        
+        
         # look at the completeness curve
         # plt.figure()
         # plt.plot(ed_fake, frac_rec)
@@ -1281,7 +1282,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     for i in range(0,len(istart)):
         stats_i = FlareStats(time, flux_gap, error, flux_model,
                              istart=istart[i], istop=istop[i])
-        _ = [[item] for item in [*stats_i,ed68[i],ed90[i]]]
+        _ = [[item] for item in [*stats_i,df1.ed68.iloc[i],df1.ed90.iloc[i]]]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,_))),
                              ignore_index=True)
         
@@ -1310,5 +1311,17 @@ def h5load(store):
 # $python appaloosa.py 12345678
 if __name__ == "__main__":
     import sys
-    RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
+
+    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
+
+    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
+
+    #file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
+    #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
+    #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=10)
+
+    file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
+    RunLC(file=file, dbmode='everest', display=True, debug=True,dofake=True, nfake=10)
+
+
 

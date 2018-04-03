@@ -107,6 +107,7 @@ def QtrFlat(time, flux, qtr, order=3):
         if (krnl < 10):
             krnl = 10
 
+
         df['flux_sm'] = df.flux.rolling(krnl,center=False).median()
         df = df.dropna(how='any')
     
@@ -114,6 +115,7 @@ def QtrFlat(time, flux, qtr, order=3):
         flux_flat.iloc[df.index.values] = df.flux - np.polyval(fit, df.time) + tot_med
 
     return np.array(flux_flat)
+
 
 
 def FindGaps(time, maxgap=0.125, minspan=2.0):
@@ -356,6 +358,7 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
     # now take N passes of rejection on it
     for k in range(0, numpass):
         # rolling median in this data span with the kernel size
+
         flux_i['flux_i_sm'] = flux_i.flux.rolling(nptsmooth, center=True).median()
         #indx = np.isfinite(flux_i_sm)
         flux_i = flux_i.dropna(how='any')
@@ -364,6 +367,7 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
             #diff_k = (flux_i[indx] - flux_i_sm[indx])
             flux_i['diff_k'] = flux_i.flux-flux_i.flux_i_sm
             lims = np.nanpercentile(flux_i.diff_k, (pcentclip, 100-pcentclip))
+
 
             # iteratively reject points
             # keep points within sigclip (for phot errors), or
