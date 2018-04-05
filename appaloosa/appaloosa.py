@@ -23,7 +23,7 @@ from scipy import signal
 from astropy.io import fits
 import matplotlib
 import glob
-matplotlib.rcParams.update({'font.size':18})
+matplotlib.rcParams.update({'font.size':14})
 matplotlib.rcParams.update({'font.family':'serif'})
 from scipy.signal import savgol_filter
 
@@ -158,7 +158,7 @@ def Get(mode, file, objectid, win_size=3):
     
     '''
     
-    def GetObjectID(mode):
+    def GetObjectID(mode, file):
         if mode == 'fits':
             return str(int( file[file.find('kplr')+4:file.find('-')]))
         elif mode == 'ktwo':
@@ -172,7 +172,7 @@ def Get(mode, file, objectid, win_size=3):
         elif mode == 'csv':
             return '0000'
         
-    def GetOutfile(mode,file):
+    def GetOutfile(mode, file):
         
         if mode == 'everest':
             fldr = objectid[0:3]
@@ -234,7 +234,7 @@ def Get(mode, file, objectid, win_size=3):
     if 'error' not in lc.columns:
         lc['error'] = np.nanmedian(lc.flux_raw.rolling(win_size, center=True).std())
 
-    return GetOutfile(mode, file), GetObjectID(mode), np.array(lc.qtr), np.array(lc.time), np.array(lc.quality), np.array(lc.exptime), np.array(lc.flux_raw), np.array(lc.error)
+    return GetOutfile(mode, file), GetObjectID(mode, file), np.array(lc.qtr), np.array(lc.time), np.array(lc.quality), np.array(lc.exptime), np.array(lc.flux_raw), np.array(lc.error)
         
 def GetLCfits(file):
     
@@ -1140,8 +1140,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 df2temp = df2.iloc[l:r]
                 df1temp = df1[(df1.istart > l) & (df1.istop <r)]
                 medflux = df2temp.flux_model.median()# flux needs to be normalized
-                t_tmp1 = df2temp.time.iloc[df1temp.istart]
-                t_tmp2 = df2temp.time.iloc[df1temp.istop]
+                t_tmp1 = df2temp.time[df1temp.istart]
+                t_tmp2 = df2temp.time[df1temp.istop]
                 _ = pd.DataFrame()
                 _['ed_fake'], _['rec_fake'] = FakeFlares(df2temp.time,df2temp.flux_gap/medflux - 1.0, df2temp.error/medflux, df2temp.lcflag, t_tmp1, t_tmp2, savefile=True, verboseout=verbosefake, gapwindow=gapwindow, outfile=outfile + '_fake.h5', display=display, nfake=nfake, debug=debug)
                 
@@ -1313,16 +1313,10 @@ def h5load(store):
 if __name__ == "__main__":
     import sys
 
-    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
-
-    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=100)
-
-    #file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
-    #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
-    #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=10)
-
+    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=10, iterations=20)
     file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
-    RunLC(file=file, dbmode='everest', display=True, debug=False,dofake=True, nfake=20,iterations=20)
-
-
-
+    RunLC(file=file, dbmode='everest', display=True, debug=False, nfake=20, iterations=20)
+    #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
+    #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=20, iterations=20)
+    #file = '/home/ekaterina/Documents/appaloosa/misc/testdata/ktwo210422945-c04_llc.fits'
+    #RunLC(file=file, dbmode='ktwo', display=True, debug=False, nfake=20, iterations=20)
