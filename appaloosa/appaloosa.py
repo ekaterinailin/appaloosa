@@ -23,6 +23,7 @@ from scipy import signal
 from astropy.io import fits
 import matplotlib
 import glob
+import io
 matplotlib.rcParams.update({'font.size':14})
 matplotlib.rcParams.update({'font.family':'serif'})
 from scipy.signal import savgol_filter
@@ -232,8 +233,10 @@ def Get(mode, file, objectid, win_size=3):
         lc['quality'] = 0
         
     if 'error' not in lc.columns:
-        lc['error'] = np.nanmedian(lc.flux_raw.rolling(win_size, center=True).std())
-
+        #lc['error'] = np.nanmedian(lc.flux_raw.rolling(win_size, center=True).std())
+        lc['error'] = lc.flux_raw.rolling(win_size, center=True).std()
+        lc.error.iloc[0] =lc.error.iloc[1]
+        lc.error.iloc[-1] =lc.error.iloc[-2]
     return GetOutfile(mode, file), GetObjectID(mode, file), np.array(lc.qtr), np.array(lc.time), np.array(lc.quality), np.array(lc.exptime), np.array(lc.flux_raw), np.array(lc.error)
         
 def GetLCfits(file):
@@ -294,7 +297,7 @@ def GetLCeverest(file):
     hdu = fits.open(file)
     data_rec = hdu[1].data
     lc = pd.DataFrame({'time':np.array(data_rec['TIME']).byteswap().newbyteorder(),
-                      'flux_raw':np.array(data_rec['FLUX']).byteswap().newbyteorder(),})
+                      'flux_raw':np.array(data_rec['FCORR']).byteswap().newbyteorder(),})
     #keep the outliers... for now
     #lc['quality'] = data_rec['OUTLIER'].byteswap().newbyteorder()
   
@@ -589,111 +592,117 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
         flare ends at. If not used, defaults to the last data point.
 
     '''
-
-    # if FLARE indicies are not stated by user, use start/stop of data
-    if (istart < 0):
-        istart = 0
-    if (istop < 0):
-        istop = len(flux)-1
-
-    # can't have flare start/stop at same point
-    if (istart == istop):
-        istop = istop + 1
-        istart = istart - 1
-
-    # need to have flare at least 3 datapoints long
-    if (istop-istart < 2):
-        istop = istop + 1
-
-    # print(istart, istop) # % ;
-
-    tstart = time[istart]
-    tstop = time[istop]
-    dur0 = tstop - tstart
-
-    # define continuum regions around the flare, same duration as
-    # the flare, but spaced by half a duration on either side
-    if (c1[0]==-1):
-        t0 = tstart - dur0
-        t1 = tstart - dur0/2.
-        c1 = np.where((time >= t0) & (time <= t1))
-    if (c2[0]==-1):
-        t0 = tstop + dur0/2.
-        t1 = tstop + dur0
-        c2 = np.where((time >= t0) & (time <= t1))
-
-    flareflux = flux[istart:istop+1]
-    flaretime = time[istart:istop+1]
-    modelflux = model[istart:istop+1]
-    flareerror = error[istart:istop+1]
-
-    contindx = np.concatenate((c1[0], c2[0]))
-    if (len(contindx) == 0):
-        # if NO continuum regions are found, then just use 1st/last point of flare
-        contindx = np.array([istart, istop])
-        cpoly = 1
-    contflux = flux[contindx] # flux IN cont. regions
-    conttime = time[contindx]
-    contfit = np.polyfit(conttime, contflux, cpoly)
-    contline = np.polyval(contfit, flaretime) # poly fit to cont. regions
-
-    medflux = np.nanmedian(model)
-
-    # measure flare amplitude
-    ampl = np.max(flareflux-contline) / medflux
-    tpeak = flaretime[np.argmax(flareflux-contline)]
-
-    p05 = np.where((flareflux-contline <= ampl*0.5))
-    if len(p05[0]) == 0:
-        fwhm = dur0 * 0.25
-        # print('> warning') # % ;
-    else:
-        fwhm = np.max(flaretime[p05]) - np.min(flaretime[p05])
-
-    # fit flare with single aflare model
-    pguess = (tpeak, fwhm, ampl)
-    # print(pguess) # % ;
-    # print(len(flaretime)) # % ;
-
-    try:
-        popt1, pcov = curve_fit(aflare1, np.array(flaretime), (flareflux-contline) / medflux, p0=pguess)
-    except ValueError:
-        # tried to fit bad data, so just fill in with NaN's
-        # shouldn't happen often
-        popt1 = np.array([np.nan, np.nan, np.nan])
-    except RuntimeError:
-        # could not converge on a fit with aflare
-        # fill with bad flag values
-        popt1 = np.array([-99., -99., -99.])
-
-    # flare_chisq = total( flareflux - modelflux)**2.  / total(error)**2
-    flare_chisq = chisq(flareflux, flareerror, modelflux)
-
-    # measure KS stats of flare versus model
-    ks_d, ks_p = stats.ks_2samp(flareflux, modelflux)
-
-    # measure KS stats of flare versus continuum regions
-    ks_dc, ks_pc = stats.ks_2samp(flareflux-contline, contflux-np.polyval(contfit, conttime))
-
-    # put flux in relative units, remove dependence on brightness of stars
-    # rel_flux = (flux_gap - flux_model) / np.median(flux_model)
-    # rel_error = error / np.median(flux_model)
-
-    # measure flare ED
-    ed = EquivDur(np.array(flaretime), (flareflux-contline)/medflux)
-
-    # output a dict or array?
-    params = np.array((tstart, tstop, tpeak, ampl, fwhm, dur0,
-                       popt1[0], popt1[1], popt1[2],
-                       flare_chisq, ks_d, ks_p, ks_dc, ks_pc, ed), dtype='float')
     # the parameter names for later reference
-    header = ['t_start', 't_stop', 't_peak', 'amplitude', 'FWHM', 'duration',
-             't_peak_aflare1', 't_FWHM_aflare1', 'amplitude_aflare1',
-             'flare_chisq', 'KS_d_model', 'KS_p_model', 'KS_d_cont', 'KS_p_cont', 'Equiv_Dur']
+
 
     if ReturnHeader is True:
+    
+        header = ['t_start', 't_stop', 't_peak', 'amplitude', 'FWHM', 'duration',
+                  't_peak_aflare1', 't_FWHM_aflare1', 'amplitude_aflare1',
+                  'flare_chisq', 'KS_d_model', 'KS_p_model', 'KS_d_cont', 'KS_p_cont',
+                  'Equiv_Dur','err_Equiv_Dur']
         return header
+    
     else:
+        # if FLARE indicies are not stated by user, use start/stop of data
+        if (istart < 0):
+            istart = 0
+        if (istop < 0):
+            istop = len(flux)-1
+
+        # can't have flare start/stop at same point
+        if (istart == istop):
+            istop = istop + 1
+            istart = istart - 1
+
+        # need to have flare at least 3 datapoints long
+        if (istop-istart < 2):
+            istop = istop + 1
+
+        # print(istart, istop) # % ;
+
+        tstart = time[istart]
+        tstop = time[istop]
+        dur0 = tstop - tstart
+
+        # define continuum regions around the flare, same duration as
+        # the flare, but spaced by half a duration on either side
+        if (c1[0]==-1):
+            t0 = tstart - dur0
+            t1 = tstart - dur0/2.
+            c1 = np.where((time >= t0) & (time <= t1))
+        if (c2[0]==-1):
+            t0 = tstop + dur0/2.
+            t1 = tstop + dur0
+            c2 = np.where((time >= t0) & (time <= t1))
+
+        flareflux = flux[istart:istop+1]
+        flaretime = time[istart:istop+1]
+        modelflux = model[istart:istop+1]
+        flareerror = error[istart:istop+1]
+
+        contindx = np.concatenate((c1[0], c2[0]))
+        if (len(contindx) == 0):
+            # if NO continuum regions are found, then just use 1st/last point of flare
+            contindx = np.array([istart, istop])
+            cpoly = 1
+        contflux = flux[contindx] # flux IN cont. regions
+        conttime = time[contindx]
+        contfit = np.polyfit(conttime, contflux, cpoly)
+        contline = np.polyval(contfit, flaretime) # poly fit to cont. regions
+
+        medflux = np.nanmedian(model)
+
+        # measure flare amplitude
+        ampl = np.max(flareflux-contline) / medflux
+        tpeak = flaretime[np.argmax(flareflux-contline)]
+
+        p05 = np.where((flareflux-contline <= ampl*0.5))
+        if len(p05[0]) == 0:
+            fwhm = dur0 * 0.25
+            # print('> warning') # % ;
+        else:
+            fwhm = np.max(flaretime[p05]) - np.min(flaretime[p05])
+
+        # fit flare with single aflare model
+        pguess = (tpeak, fwhm, ampl)
+        # print(pguess) # % ;
+        # print(len(flaretime)) # % ;
+
+        try:
+            popt1, pcov = curve_fit(aflare1, np.array(flaretime), (flareflux-contline) / medflux, p0=pguess)
+        except ValueError:
+            # tried to fit bad data, so just fill in with NaN's
+            # shouldn't happen often
+            popt1 = np.array([np.nan, np.nan, np.nan])
+        except RuntimeError:
+            # could not converge on a fit with aflare
+            # fill with bad flag values
+            popt1 = np.array([-99., -99., -99.])
+
+        # flare_chisq = total( flareflux - modelflux)**2.  / total(error)**2
+        flare_chisq = chisq(flareflux, flareerror, modelflux)
+
+        # measure KS stats of flare versus model
+        ks_d, ks_p = stats.ks_2samp(flareflux, modelflux)
+
+        # measure KS stats of flare versus continuum regions
+        ks_dc, ks_pc = stats.ks_2samp(flareflux-contline, contflux-np.polyval(contfit, conttime))
+
+        # put flux in relative units, remove dependence on brightness of stars
+        # rel_flux = (flux_gap - flux_model) / np.median(flux_model)
+        # rel_error = error / np.median(flux_model)
+
+        # measure flare ED
+        ed = EquivDur(np.array(flaretime), (flareflux-contline)/medflux)
+        
+        #measure error on ED
+        erred = np.sqrt(ed**2 / (istop-istart) / flare_chisq)
+        
+        # output a dict or array?
+        params = np.array((tstart, tstop, tpeak, ampl, fwhm, dur0,
+                           popt1[0], popt1[1], popt1[2],
+                           flare_chisq, ks_d, ks_p, ks_dc, ks_pc, ed, erred), dtype='float')
         return params
 
 
@@ -798,8 +807,9 @@ def MultiFind(time, flux, error, flags, mode=3,
         signalfwhm = dt * 2
         ftime = np.arange(0, 2, dt)
         modelfilter = aflare1(ftime, 1, signalfwhm, 1)
-        flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
-
+        #flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
+        flux_diff = flux - flux_model
+        
     if (mode == 4):
         # fit data with a SAVGOL filter
         dt = np.nanmedian(time[1:] - time[0:-1])
@@ -811,10 +821,10 @@ def MultiFind(time, flux, error, flags, mode=3,
 
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=3, N3=3,
+    isflare = FINDflare(flux_diff, error, N1=3, N2=2,N3=3,
                         returnbinary=True, avg_std=True)
 
-
+    
     # now pick out final flare candidate points from above
     cand1 = np.where((bad < 1) & (isflare > 0))[0]
 
@@ -1101,9 +1111,10 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 
 # objectid = '9726699'  # GJ 1243
 def RunLC(file='', objectid='', ftype='sap', lctype='',
-          display=False, readfile=False, debug=False, dofake=True,
+          display=False, readfile=False, debug=False, dofake=False,
           dbmode='fits', gapwindow=0.1, maxgap=0.125, 
-          verbosefake=True, nfake=100, iterations=10):
+          verbosefake=True, nfake=100, iterations=10, respath='',
+          writeout=True):
     '''
     Main wrapper to obtain and process a light curve
     '''
@@ -1193,6 +1204,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         istart_i, istop_i, flux_model_i = MultiFind(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]],
                                                     error[dl[i]:dr[i]], lcflag[dl[i]:dr[i]],
                                                     gapwindow=gapwindow, debug=debug)
+        chi2 = chisq(flux_gap[dl[i]:dr[i]], flux_model_i[dl[i]:dr[i]], error[dl[i]:dr[i]])
 
         istart = np.array(np.append(istart, istart_i + dl[i]), dtype='int')
         istop = np.array(np.append(istop, istop_i + dl[i]), dtype='int')
@@ -1353,7 +1365,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                  }
 
     if debug is True:
-        print(str(datetime.datetime.now()) + 'Getting output header')
+        print(str(datetime.datetime.now()) + ' Getting output header.')
         
     header = FlareStats(time, flux_gap, error, flux_model,
                         ReturnHeader=True)
@@ -1361,17 +1373,45 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     dfout = pd.DataFrame()
     
     if debug is True:
-        print(str(datetime.datetime.now()) + 'Getting FlareStats')
+        print(str(datetime.datetime.now()) + ' Getting FlareStats.')
         
     # loop over EACH FLARE, compute stats
+    df2 = pd.DataFrame({'istart':istart,'istop':istop})
+    ampl,ed,ederr,durat = [],[],[],[]
     for i in range(0,len(istart)):
         stats_i = FlareStats(time, flux_gap, error, flux_model,
                              istart=istart[i], istop=istop[i])
+        durat.append(stats_i[5])
+        ed.append(stats_i[-2])
+        ederr.append(stats_i[-1])
+        ampl.append(stats_i[3])
         _ = [[item] for item in [*stats_i,df1.ed68.iloc[i],df1.ed90.iloc[i]]]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,_))),
                              ignore_index=True)
-        
-    h5store(outfile + '_flare.h5',dfout,**metadata)
+    if not dfout.empty:
+        h5store(outfile + '_flare.h5',dfout,**metadata)
+    
+
+
+    if writeout is True:
+        #os.chdir(str(sys.argv[1])) #go where the data are stored
+        os.chdir(respath)
+        if os.path.isfile('flarelist.txt') == False: #check if output file already exists
+            with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
+                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Total Exposure Time of LC in Days \t BJD-2454833 days \n', 'utf-8') #write a header line
+                myfile.write(firstline)    #write it into table
+        with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
+            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t' + str(np.sum(exptime)) + '\t' + str(time[0]) + '\n' #insert output params
+
+            myfile.write(line)
+            myfile.close()
+
+        #Write data frames to file for later processing to FFDs and such.
+        df1 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model})
+        df2 = pd.DataFrame({'istart':istart,'istop':istop,'ampl':ampl,
+                            'dur':durat, 'ed':ed, 'ederr': ederr})
+        df1.to_csv(objectid + '_flux.csv')
+        df2.to_csv(objectid + '_flares.csv')
     return
 
 #Use h5 to store metadata and data such that it is easy to propagate, 
@@ -1399,8 +1439,7 @@ if __name__ == "__main__":
     import warnings
     warnings.filterwarnings("ignore")
     #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=10, iterations=20)
-    file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
-    RunLC(file=file, dbmode='everest', display=True, debug=False, nfake=20, iterations=3000)
+
     #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
     #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=20, iterations=20)
     #file = '/home/ekaterina/Documents/appaloosa/misc/testdata/ktwo210422945-c04_llc.fits'
