@@ -2,46 +2,45 @@
 script to carry out flare finding in Kepler LC's
 
 """
-import io # for writeout option in RunLC
+
 import numpy as np
 import os.path
-from os.path import expanduser #On Unix and Windows, return the argument with an initial component of sim or sim user replaced by that users home directory.
+from os.path import expanduser
 import time
 import datetime
-from version import __version__ #according to PEP 8, __version__ return the version number of the module. It is stored in version.py
+from version import __version__
 from aflare import aflare1
 import detrend
 from gatspy.periodic import LombScargleFast
 import warnings
 import matplotlib.pyplot as plt
+from pandas import rolling_std
 import pandas as pd
-from pandas import rolling_std #Moving standard deviation. By default, the result is set to the right edge of the window. This can be changed to the center of the window by setting center=True.
 from scipy import stats
 from scipy.optimize import curve_fit
 from scipy.signal import wiener
 from scipy import signal
 from astropy.io import fits
 import matplotlib
-from glob import glob
+import glob
 matplotlib.rcParams.update({'font.size':14})
-matplotlib.rcParams.update({'font.family':'sans-serif'})
-matplotlib.rcParams.update({'font.sans-serif':'Arial'})
+matplotlib.rcParams.update({'font.family':'serif'})
+from scipy.signal import savgol_filter
 
 # from rayleigh import RayleighPowerSpectrum
-
-
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-# DATA READING FUNCTIONS:
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-
-
 try:
     import MySQLdb
     haz_mysql = True
 except ImportError:
     haz_mysql = False
+
+
+def chisq(data, error, model):
+    '''
+    Compute the normalized chi square statistic:
+    chisq =  1 / N * SUM(i) ( (data(i) - model(i))/error(i) )^2
+    '''
+    return np.sum( ((data - model) / error)**2.0 ) / np.size(data)
 
 
 def GetLCdb(objectid, type='', readfile=False,
@@ -136,175 +135,192 @@ def GetLCdb(objectid, type='', readfile=False,
     return data
 
 
+
+def Get(mode, file, objectid, win_size=3):
+    
+    '''
+    
+    Call a get function depending on the mode, 
+    processes loading steps common to all modes.
+    Generates error from short time median scatter
+    if not given elsewhere.
+    
+    Parameters: 
+    ------------
+    file: lightcurve file location
+    mode: type of light curve, e.g. EVEREST LC, 
+          Vanderburg LC, raw MAST .fits file etc.
+    win_size: window size for scatter generator
+    
+    Returns:
+    ------------
+    lc: light curve DataFrame
+    
+    '''
+    
+    def GetObjectID(mode, file):
+        if mode == 'fits':
+            return str(int( file[file.find('kplr')+4:file.find('-')]))
+        elif mode == 'ktwo':
+            return str(int( file[file.find('ktwo')+4:file.find('-')] ))
+        elif mode == 'vdb':
+            str(int(file[file.find('lightcurve_')+11:file.find('-')]))
+        elif mode == 'everest':
+            return str(int(file[file.find('everest')+15:file.find('-')]))
+        elif mode == 'txt':
+            return file[0:3]
+        elif mode == 'csv':
+            return '0000'
+        
+    def GetOutfile(mode, file):
+        
+        if mode == 'everest':
+            fldr = objectid[0:3]
+            home = expanduser("~")
+            outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
+            if not os.path.isdir(outdir):
+                try:
+                    os.makedirs(outdir)
+                except OSError:
+                    pass
+            return outdir + file[file.find('everest')+15:]
+        
+        elif mode == 'fits':
+            fldr = objectid[0:3]
+            outdir = 'aprun/' + fldr + '/'
+            if not os.path.isdir(outdir):
+                try:
+                    os.makedirs(outdir)
+                except OSError:
+                    pass
+            return outdir + file[file.find('kplr'):]
+        
+        elif mode in ('vdb','csv'):
+            fldr = objectid[0:3]
+            home = expanduser("~")
+            outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
+            if not os.path.isdir(outdir):
+                try:
+                    os.makedirs(outdir)
+                except OSError:
+                    pass
+            return outdir + file[file.find('lightcurve_')+11:]
+        
+        elif mode in ('txt','ktwo'):
+            return file
+
+    modes = {'fits': GetLCfits,
+             'ktwo': GetLCfits, 
+             'vdb': GetLCvdb, 
+             'everest': GetLCeverest, 
+             'txt': GetLCtxt, 
+             'csv': GetLCvdb}
+    
+    lc = modes[mode](file).dropna(how='any')
+
+    t = lc.time.values
+    dt = np.nanmedian(t[1:] - t[0:-1])
+    if (dt < 0.01):
+        dtime = 54.2 / 60. / 60. / 24.
+    else:
+        dtime = 30 * 54.2 / 60. / 60. / 24.
+    
+    lc['exptime'] = dtime
+    lc['qtr'] = 0
+    
+    if 'quality' not in lc.columns:
+        lc['quality'] = 0
+        
+    if 'error' not in lc.columns:
+        lc['error'] = np.nanmedian(lc.flux_raw.rolling(win_size, center=True).std())
+
+    return GetOutfile(mode, file), GetObjectID(mode, file), np.array(lc.qtr), np.array(lc.time), np.array(lc.quality), np.array(lc.exptime), np.array(lc.flux_raw), np.array(lc.error)
+        
 def GetLCfits(file):
+    
     '''
-
     Parameters
     ----------
-    file : str
+    file : light curve file location for a MAST archive .fits file
 
     Returns
     -------
-    qtr, time, sap_quality, exptime, flux_raw, error, time_res
+    lc: light curve DataFrame with columns [time, quality, flux_raw, error]
     '''
 
     hdu = fits.open(file)
     data_rec = hdu[1].data
-    header = hdu[0].header
-    headerone = hdu[1].header
+    lc = pd.DataFrame({'time':data_rec['TIME'].byteswap().newbyteorder(),
+                      'flux_raw':data_rec['SAP_FLUX'].byteswap().newbyteorder(),
+                      'error':data_rec['SAP_FLUX_ERR'].byteswap().newbyteorder(),
+                      'quality':data_rec['SAP_QUALITY'].byteswap().newbyteorder()})
+    
 
-    time = data_rec['TIME']
-    time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
-  
-    if KeplerorK2(file)==1: 
-        quarter_num = header['QUARTER']
-    elif ((KeplerorK2(file)==2) or (KeplerorK2(file)==2.1)): 
-        quarter_num = header['CAMPAIGN']
-
-    print(quarter_num)
-    flux_raw = data_rec['SAP_FLUX']
-    error = data_rec['SAP_FLUX_ERR']
-    sap_quality = data_rec['SAP_QUALITY']
-
-    isrl = np.isfinite(flux_raw)
-
-    qtr = np.zeros_like(time[isrl])
-
-    dt = np.nanmedian(time[1:] - time[0:-1])
-    if (dt < 0.01):
-        dtime = 54.2 / 60. / 60. / 24.
-    else:
-        dtime = 30 * 54.2 / 60. / 60. / 24.
-    exptime = np.ones_like(time[isrl]) * dtime
-
-    return qtr, time[isrl], sap_quality[isrl], exptime, flux_raw[isrl], error[isrl], time_res, quarter_num
+    return lc
 
 
-def GetLCk2(file):
+def GetLCvdb(file):
+
     '''
-    Read K2 data in.
-
-    Currently supporting the ascii-dumps of MAST .fits files
-
     Parameters
     ----------
-    file : str
+    file : light curve file location for a Vanderburg de-trended .txt file
 
     Returns
     -------
-    qtr, time, sap_quality, exptime, flux_raw, error
+    lc: light curve DataFrame with columns [time, flux_raw]
     '''
-
-    time, flux_raw, error, sap_quality = np.loadtxt(file, unpack=True, usecols=(0,7,8,9), skiprows=1)
-
-    isrl = np.isfinite(flux_raw)
-
-    qtr = np.zeros_like(time[isrl])
-
-    dt = np.nanmedian(time[1:] - time[0:-1])
-    if (dt < 0.01):
-        dtime = 54.2 / 60. / 60. / 24.
-    else:
-        dtime = 30 * 54.2 / 60. / 60. / 24.
-    exptime = np.ones_like(time[isrl]) * dtime
-
-    return qtr, time[isrl], sap_quality[isrl], exptime, flux_raw[isrl], error[isrl]
+    
+    lc = pd.read_csv(file,index_col=False)
+    lc.rename(index=str, 
+              columns={'BJD - 2454833': 'time',' Corrected Flux':'flux_raw'},
+              inplace=True,
+              )
+    return lc
 
 
-def GetLCvdb(file, win_size=3):
+def GetLCeverest(file):
+    
     '''
-    Ingest K2 lightcurve from the Vanderburg .txt file
+    Parameters
+    ----------
+    file : light curve file location for a Vanderburg de-trended .txt file
 
-    also generates errors via median short term scatter
+    Returns
+    -------
+    lc: light curve DataFrame with columns [time, flux_raw]
     '''
-    time, flux_raw = np.loadtxt(file, unpack=True, usecols=(0,1), skiprows=1, delimiter=',', comments=('#','*'))
-    isrl = np.isfinite(flux_raw)
-    qtr = np.zeros_like(time[isrl])
-    qual = np.zeros_like(time[isrl])
-
-    dt = np.nanmedian(time[1:] - time[0:-1])
-    if (dt < 0.01):
-        dtime = 54.2 / 60. / 60. / 24.
-    else:
-        dtime = 30 * 54.2 / 60. / 60. / 24.
-    exptime = np.ones_like(time[isrl]) * dtime
-
-    error = np.ones_like(time[isrl]) * np.nanmedian(rolling_std(flux_raw[isrl], win_size, center=True))
-
-    return qtr, time[isrl], qual, exptime, flux_raw[isrl], error
-
-
-def GetLCeverest(file, win_size=3):
-    '''
-    Ingest K2 light curve from the Everest .fits file
-
-    also generates errors via median short term scatter
-    '''
-
+    
     hdu = fits.open(file)
     data_rec = hdu[1].data
-    header = hdu[0].header
-    headerone = hdu[1].header
-
-
-    time_res = headerone['TIMEDEL']*60*24 #time resolution in minutes
+    lc = pd.DataFrame({'time':np.array(data_rec['TIME']).byteswap().newbyteorder(),
+                      'flux_raw':np.array(data_rec['FLUX']).byteswap().newbyteorder(),})
+    #keep the outliers... for now
+    #lc['quality'] = data_rec['OUTLIER'].byteswap().newbyteorder()
   
-    quarter_num = header['CAMPAIGN']
-
-    time = np.array(data_rec['TIME'])
-    #flux_raw = np.array(data_rec['FLUX'])
-    flux_raw = np.array(data_rec['FCOR'])
-    isrl = np.isfinite(flux_raw)
-
-    qtr = np.zeros_like(time[isrl])
-
-    dt = np.nanmedian(time[1:] - time[0:-1])
-    if (dt < 0.01):
-        dtime = 54.2 / 60. / 60. / 24.
-    else:
-        dtime = 30 * 54.2 / 60. / 60. / 24.
-    exptime = np.ones_like(time[isrl]) * dtime
-
-    # qual = data_rec['OUTLIER']
-    qual = np.zeros_like(flux_raw) # keep the outliers... for now
-
-    error = np.ones_like(time[isrl]) * np.nanmedian(rolling_std(flux_raw[isrl], win_size, center=True))
-    #ones_like: Return an array of ones with the same shape and type as a given array.
-    return qtr, time[isrl], qual[isrl], exptime, flux_raw[isrl], error, quarter_num, time_res
+    return lc
 
 
-def GetLCtxt(file, skiprows=1):
+def GetLCtxt(file):
+
     '''
-    Import the most basic lightcurve, with columns:
-    (time, flux, error)
-
-    Other columns (quarter, flags, etc) are filled w/ 0's
-
     Parameters
     ----------
-    file : str
-    skiprows : int, optional
+    file : light curve file location for a basic .txt file
 
     Returns
     -------
-
+    lc: light curve DataFrame with columns [time, flux_raw, error]
     '''
-
-    time, flux_raw, error = np.loadtxt(file, unpack=True, usecols=(0,1,2), skiprows=skiprows)
-
-    isrl = np.isfinite(flux_raw)
-
-    qtr = np.zeros_like(time[isrl])
-    sap_quality = np.zeros_like(time[isrl])
-
-    dt = np.nanmedian(time[1:] - time[0:-1])
-    if (dt < 0.01):
-        dtime = 54.2 / 60. / 60. / 24.
-    else:
-        dtime = 30 * 54.2 / 60. / 60. / 24.
-    exptime = np.ones_like(time[isrl]) * dtime
-
-    return qtr, time[isrl], sap_quality, exptime, flux_raw[isrl], error[isrl]
+    
+    lc = pd.read_csv(file,
+                     index_col=False,
+                     usecols=(0,1,2),
+                     skiprows=1,
+                     header = None,
+                     names = ['time','flux_raw','error'])
+        
+    return lc
 
 
 def OneCadence(data):
@@ -344,249 +360,9 @@ def OneCadence(data):
     data_out = data[indx,:]
     return data_out
 
-
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-# VARIOUS HELPER AND EXPERIMENTAL FUNCTIONS
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-
-
-def KeplerorK2(file):
-    
-    '''
-    Checks if we are dealing with Kepler or K2 data in a particular file
-    
-    Input:
-    
-    string: filename
-    
-    Output:
-    
-    int: 1 for Kepler mission or 2 for K2 mission light curves, 2.1 for EVEREST detrended light curves
-    
-    '''
-    if 'ktwo' in file:
-        return 2
-    elif 'kplr' in file:
-        return 1
-    elif 'everest' in file:
-        return 2.1
-
-
-def chisq(data, error, model):
-    '''model
-    Compute the normalized chi square statistic:
-    chisq =  1 / N * SUM(i) ( (data(i) - model(i))/error(i) )^2
-    '''
-    return np.sum( ((data - model) / error)**2.0 ) / np.size(data)
-
-
-
-def FlarePer(time, minper=0.1, maxper=30.0, nper=20000):
-    '''
-    Look for periodicity in the flare occurrence times. Could be due to:
-    a) mis-identified periodic things (e.g. heartbeat stars)
-    b) crazy binary star flaring things
-    c) flares on a rotating star
-    d) bugs in code
-    e) aliens
-
-    '''
-
-    # use energy = 1 for flare times.
-    # This will create something like the window function
-    energy = np.ones_like(time)
-
-    # Use Jake Vanderplas faster version!
-    pgram = LombScargleFast(fit_offset=False)
-    pgram.optimizer.set(period_range=(minper,maxper))
-
-    pgram = pgram.fit(time, energy - np.nanmedian(energy))
-
-    df = (1./minper - 1./maxper) / nper
-    f0 = 1./maxper
-    pwr = pgram.score_frequency_grid(f0, df, nper)
-
-    freq = f0 + df * np.arange(nper)
-    per = 1./freq
-
-    pk = per[np.argmax(pwr)] # peak period
-    pp = np.max(pwr) # peak period power
-
-    return pk, pp
-
-def EquivDur(time, flux):
-    '''
-    Compute the Equivalent Duration of an event. This is simply the area
-    under the flare, in relative flux units.
-
-    Flux must be array in units of zero-centered RELATIVE FLUX
-
-    Time must be array in units of DAYS
-
-    Output has units of SECONDS
-    '''
-
-    p = np.trapz(flux, x=(time * 60.0 * 60.0 * 24.0))
-    return p
-
-def MeasureS2N(flux, error, model, istart=-1, istop=-1):
-    '''
-    this MAY NOT be something i want....
-    '''
-    if (istart < 0): istart = 0 
-    if (istop < 0):istop = len(flux)
-
-    flareflux = flux[istart:istop+1]
-    modelflux = model[istart:istop+1]
-
-    s2n = np.sum(np.sqrt((flareflux) / (flareflux + modelflux)))
-    return s2n
-
-
-def FlagCuts(flags, bad_flags = (16, 128, 2048), returngood=True):
-
-    '''
-    return the indexes that pass flag cuts
-
-    Ethan says cut out [16, 128, 2048], can add more later.
-    '''
-
-    # convert flag array to type int, just in case
-    flags_int = np.array(flags, dtype='int')
-    # empty array to hold places where bad flags exist
-    bad = np.zeros_like(flags)
-
-    # these are the specific flags to reject on
-    # NOTE: == 2**[4, 7, 11]
-    # bad_flgs = [16, 128, 2048]
-
-    # step thru each of the bitwise flags, find where exist
-    for k in bad_flags:
-        bad = bad + np.bitwise_and(flags_int, k)
-
-    # find places in array where NO bad flags are set
-    if returngood is True:
-        good = np.where((bad < 1))[0]
-        return good
-    else:
-        return bad
-
-def KeplerLCflags():
-    '''
-
-    Stores the SAP_QUALITY data flags and produces a colour legend in a separate .pdf file. 
-
-    Input:
-    
-    none
-
-
-    Output:
-
-    options - dict, the key is the flag bit as int the item is a tuple (flag label, RGB color)
-    RGB - list of tuples that are RGB colors in format (r,g,b)
-
-
-    '''
-    #import matplotlib.pyplot as plt
-    from matplotlib import colors as mcolors
-    #import numpy as np
-    import collections
-
-
-    #Produce a rainbow-ish colormap
-    clr=[]
-    for i in range(0,21):
-        r=float(i)/21.
-        if i%2==0: b=1.0
-        else: b=0.5
-        g=1.0
-        clr.append((r,g,b))
-   
-    clr= mcolors.hsv_to_rgb(clr) #helps with the rainbow
-    
-    #***I am sure there is a better way than inserting the colors by hand...***
-    options={1: ('Attitude Tweak', clr[0]),
-                    2: ('Safe Mode',clr[1]),
-                    4: ('Spacecraft is in coarse point. It is set manually to pad not-infine point data.',clr[2]),
-                    8: ('Spacecraft is in Earth point. The first real cadence after Earth püoint is marked.',clr[3]),
-                    16: ('Reaction wheel zero crossing',clr[4]),
-                    32: ('Reaction wheel desaturation event',clr[5]),
-                    64: ('Agrabrightening detected across multiple channels on this cadence.',clr[6]),
-                    128: ('Cosmic ray was found and corrected in optimal aperture pixel.',clr[7]),
-                    256: ('Manual exclude. The cadence was excluded because of an anomaly.',clr[8]),
-                    512: ('This bit is unused by Kepler',clr[9]),
-                    1024: ('SPSD detected. This bit is flagged on the last non-gapped cadence before the maximum positive change to the detected SPSD',clr[10]),
-                    2048: ('Impulsive outlier removed before cotrending.',clr[11]),
-                    4096: ('Agrabrightening event on specified CCD mod/out detected.',clr[12]),
-                    8192: ('Cosmic ray detected in collateral pixel row or column in optimal aperture',clr[13]),
-                    16384: ('Detector anomaly flag was raised',clr[14]),
-                    32768: ('Spacecraft is not in fine point',clr[15]),
-                    65536: ('No data collected',clr[16]),
-                    131072: ('Rolling band detected in optimal aperture',clr[17]),
-                    262144: ('Rolling band detected in full mask',clr[18]),
-                    545288: ('Possible thruster firing. Not set in Kepler data.',clr[19]),
-                    1048576: ('Thruster firing. Not set in Kepler data.',clr[20])}
-
-    #Produce an order to get the colors ordered in the end. 
-    #This is a workaround because I started out with dictionaries in the beginning and I need to return a dict in the end as well.
-    #***Maybe turn the order in reverse: Use lists first and then compile them into a dict?***
-    options=collections.OrderedDict(sorted(options.items()))#sort by key
-
-    lis=[]#I also have to decompose the dict
-    for key in options:
-        lis.append(options[key])
-        
-    Labels,RGB =zip(*lis)
-    colors = dict(lis)
-
-
-
-    #copy and paste this matplotlib example: https://matplotlib.org/examples/color/named_colors.html
-
-    n = len(Labels)#number of elements in table
-    ncols = 1
-    nrows = n // ncols + 1
-    fig, ax = plt.subplots(figsize=(8, 5))
-    # Get height and width
-    X, Y = fig.get_dpi() * fig.get_size_inches()
-    h = Y / (nrows + 1)
-    w = X / ncols
-
-    for i, name in enumerate(Labels):#iterate over list indices AND the list items simultaneously
-        col = i % ncols
-        row = i // ncols
-        y = Y - (row * h) - h
-
-        xi_line = w * (col + 0.05)
-        xf_line = w * (col + 0.25)
-        xi_text = w * (col + 0.3)
-
-        ax.text(xi_text, y, name, fontsize=(h * 0.8),
-                horizontalalignment='left',
-                verticalalignment='center')
-        ax.hlines(y + h * 0.1, xi_line, xf_line, color=RGB[i], linewidth=(h * 0.6)) #here the color coding goes in
-
-    ax.set_xlim(0, X)
-    ax.set_ylim(0, Y)
-    ax.set_axis_off()
-
-    fig.subplots_adjust(left=0, right=1,
-                        top=1, bottom=0,
-                        hspace=0, wspace=0)
-
-    plt.savefig('Table_of_Kepler_LC_Flags.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
-    plt.close()
-    return options, RGB
-
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-# FLARE IDENTIFICATION FUNCTIONS:
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-
+def func_specific(wert):
+    t = 3
+    return func(t,wert)
 
 def DetectCandidate(time, flux, error, flags, model,
                     error_cut=2, gapwindow=0.1, minsep=3,
@@ -678,10 +454,10 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
         The number of consecutive points required to flag as a flare
     avg_std : bool, optional
         Should the "sigma" in this data be computed by the median of
-        the rolling_std? (Default is False)
+        the rolling().std()? (Default is False)
         (Not part of original algorithm)
     std_window : float, optional
-        If rolling_std=True, how big of a window should it use?
+        If avg_std=True, how big of a window should it use?
         (Default is 25 data points)
         (Not part of original algorithm)
     returnbinary : bool, optional
@@ -700,16 +476,13 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
     else:
         # take the average of the rolling stddev in the window.
         # better for windows w/ significant starspots being removed
-        sig_i = np.nanmedian(rolling_std(flux, std_window, center=True))
-
+        sig_i = np.nanmedian(pd.Series(flux).rolling(std_window, center=True).std())
     if debug is True:
         print("DEBUG: sig_i = " + str(sig_i))
 
     ca = flux - med_i
     cb = np.abs(flux - med_i) / sig_i
     cc = np.abs(flux - med_i - error) / sig_i
-#    negative_slope = (ca[:-1]-ca[1:]) > 0
-#    negative_slope = np.append(negative_slope,False)
 
     if debug is True:
         print("DEBUG: ")
@@ -718,7 +491,7 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
         print(sum(cc>N2))
 
     # pass cuts from Eqns 3a,b,c
-    ctmp = np.where((ca > 0) & (cb > N1) & (cc > N2))# & negative_slope)
+    ctmp = np.where((ca > 0) & (cb > N1) & (cc > N2))
 
     cindx = np.zeros_like(flux)
     cindx[ctmp] = 1
@@ -750,6 +523,49 @@ def FINDflare(flux, error, N1=3, N2=1, N3=3,
         return bin_out
 
 
+def FlagCuts(flags, bad_flags = (16, 128, 2048), returngood=True):
+
+    '''
+    return the indexes that pass flag cuts
+
+    Ethan says cut out [16, 128, 2048], can add more later.
+    '''
+
+    # convert flag array to type int, just in case
+    flags_int = np.array(flags, dtype='int')
+    # empty array to hold places where bad flags exist
+    bad = np.zeros_like(flags)
+
+    # these are the specific flags to reject on
+    # NOTE: == 2**[4, 7, 11]
+    # bad_flgs = [16, 128, 2048]
+
+    # step thru each of the bitwise flags, find where exist
+    for k in bad_flags:
+        bad = bad + np.bitwise_and(flags_int, k)
+
+    # find places in array where NO bad flags are set
+    if returngood is True:
+        good = np.where((bad < 1))[0]
+        return good
+    else:
+        return bad
+
+
+def EquivDur(time, flux):
+    '''
+    Compute the Equivalent Duration of an event. This is simply the area
+    under the flare, in relative flux units.
+
+    Flux must be array in units of zero-centered RELATIVE FLUX
+
+    Time must be array in units of DAYS
+
+    Output has units of SECONDS
+    '''
+
+    p = np.trapz(flux, x=(time * 60.0 * 60.0 * 24.0))
+    return p
 
 
 def FlareStats(time, flux, error, model, istart=-1, istop=-1,
@@ -798,12 +614,12 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
     # define continuum regions around the flare, same duration as
     # the flare, but spaced by half a duration on either side
     if (c1[0]==-1):
-        t0 = time[istart] - dur0
-        t1 = time[istart] - dur0/2.
+        t0 = tstart - dur0
+        t1 = tstart - dur0/2.
         c1 = np.where((time >= t0) & (time <= t1))
     if (c2[0]==-1):
-        t0 = time[istop] + dur0/2.
-        t1 = time[istop] + dur0
+        t0 = tstop + dur0/2.
+        t1 = tstop + dur0
         c2 = np.where((time >= t0) & (time <= t1))
 
     flareflux = flux[istart:istop+1]
@@ -840,7 +656,7 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
     # print(len(flaretime)) # % ;
 
     try:
-        popt1, pcov = curve_fit(aflare1, flaretime, (flareflux-contline) / medflux, p0=pguess)
+        popt1, pcov = curve_fit(aflare1, np.array(flaretime), (flareflux-contline) / medflux, p0=pguess)
     except ValueError:
         # tried to fit bad data, so just fill in with NaN's
         # shouldn't happen often
@@ -864,16 +680,16 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
     # rel_error = error / np.median(flux_model)
 
     # measure flare ED
-    ed = EquivDur(flaretime, (flareflux-contline)/medflux)
+    ed = EquivDur(np.array(flaretime), (flareflux-contline)/medflux)
 
     # output a dict or array?
     params = np.array((tstart, tstop, tpeak, ampl, fwhm, dur0,
                        popt1[0], popt1[1], popt1[2],
                        flare_chisq, ks_d, ks_p, ks_dc, ks_pc, ed), dtype='float')
     # the parameter names for later reference
-    header = 't_start, t_stop, t_peak, amplitude, FWHM, duration, '+\
-             't_peak_aflare1, t_FWHM_aflare1, amplitude_aflare1, '+\
-             'flare_chisq, KS_d_model, KS_p_model, KS_d_cont, KS_p_cont, Equiv_Dur'
+    header = ['t_start', 't_stop', 't_peak', 'amplitude', 'FWHM', 'duration',
+             't_peak_aflare1', 't_FWHM_aflare1', 'amplitude_aflare1',
+             'flare_chisq', 'KS_d_model', 'KS_p_model', 'KS_d_cont', 'KS_p_cont', 'Equiv_Dur']
 
     if ReturnHeader is True:
         return header
@@ -881,6 +697,54 @@ def FlareStats(time, flux, error, model, istart=-1, istop=-1,
         return params
 
 
+def MeasureS2N(flux, error, model, istart=-1, istop=-1):
+    '''
+    this MAY NOT be something i want....
+    '''
+    if (istart < 0):
+        istart = 0
+    if (istop < 0):
+        istop = len(flux)
+
+    flareflux = flux[istart:istop+1]
+    modelflux = model[istart:istop+1]
+
+    s2n = np.sum(np.sqrt((flareflux) / (flareflux + modelflux)))
+    return s2n
+
+
+def FlarePer(time, minper=0.1, maxper=30.0, nper=20000):
+    '''
+    Look for periodicity in the flare occurrence times. Could be due to:
+    a) mis-identified periodic things (e.g. heartbeat stars)
+    b) crazy binary star flaring things
+    c) flares on a rotating star
+    d) bugs in code
+    e) aliens
+
+    '''
+
+    # use energy = 1 for flare times.
+    # This will create something like the window function
+    energy = np.ones_like(time)
+
+    # Use Jake Vanderplas faster version!
+    pgram = LombScargleFast(fit_offset=False)
+    pgram.optimizer.set(period_range=(minper,maxper))
+
+    pgram = pgram.fit(time, energy - np.nanmedian(energy))
+
+    df = (1./minper - 1./maxper) / nper
+    f0 = 1./maxper
+    pwr = pgram.score_frequency_grid(f0, df, nper)
+
+    freq = f0 + df * np.arange(nper)
+    per = 1./freq
+
+    pk = per[np.argmax(pwr)] # peak period
+    pp = np.max(pwr) # peak period power
+
+    return pk, pp
 
 
 def MultiFind(time, flux, error, flags, mode=3,
@@ -898,10 +762,10 @@ def MultiFind(time, flux, error, flags, mode=3,
     flux_i = np.copy(flux)
 
     if (mode == 1):
-        # just use the multi-pass boxcar and average. Dumb
-        flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=0.2)
+        # just use the multi-pass boxcar and average. Simple. Too simple...
+        flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=0.1)
         flux_model2 = detrend.MultiBoxcar(time, flux, error, kernel=1.0)
-        flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=3.0)
+        flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=10.0)
 
         flux_model = (flux_model1 + flux_model2 + flux_model3) / 3.
         flux_diff = flux - flux_model
@@ -925,9 +789,8 @@ def MultiFind(time, flux, error, flags, mode=3,
                               per2=False, debug=debug)
         # sin1 = detrend.FitMedSin(time, box1, error)
         box3 = detrend.MultiBoxcar(time, flux - sin1, error, kernel=0.3)
-
-        dt = np.nanmedian(time[1:] - time[0:-1])
-
+        t = np.array(time)
+        dt = np.nanmedian(t[1:] - t[0:-1])
         exptime_m = (np.nanmax(time) - np.nanmin(time)) / len(time)
         # ksep used to = 0.07...
         flux_model = detrend.IRLSSpline(time, box3, error, numpass=20, debug=debug, ksep=exptime_m*10.) + sin1
@@ -935,11 +798,20 @@ def MultiFind(time, flux, error, flags, mode=3,
         signalfwhm = dt * 2
         ftime = np.arange(0, 2, dt)
         modelfilter = aflare1(ftime, 1, signalfwhm, 1)
-        flux_diff = signal.convolve(flux - flux_model, modelfilter, mode='same')
-        #flux_diff = flux - flux_model 
+        flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
+
+    if (mode == 4):
+        # fit data with a SAVGOL filter
+        dt = np.nanmedian(time[1:] - time[0:-1])
+        Nsmo = np.floor(0.2 / dt)
+        if Nsmo % 2 == 0:
+            Nsmo = Nsmo + 1
+        flux_model = savgol_filter(flux, Nsmo, 2, mode='nearest')
+        flux_diff = flux - flux_model
+
 
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=4, N2=2, N3=3,
+    isflare = FINDflare(flux_diff, error, N1=3, N3=3,
                         returnbinary=True, avg_std=True)
 
 
@@ -966,11 +838,14 @@ def MultiFind(time, flux, error, flags, mode=3,
         istop[to1] += 1
 
     if debug is True:
-        plt.figure(figsize=(12,6))
-        plt.scatter(time, flux, alpha=0.5)
-        plt.plot(time,flux_model, c='black')
-        plt.scatter(time[cand1], flux[cand1], c='red')
+        plt.figure()
+        plt.title('debugging plot')
+        plt.scatter(time, flux, alpha=0.5,label='flux')
+        plt.plot(time,flux_model, c='black',label='flux model')
+        plt.scatter(time[cand1], flux[cand1], c='red',label='flare candidates')
+        plt.legend()
         plt.show()
+        plt.close()
 
     # print(istart, len(istart))
     return istart, istop, flux_model
@@ -992,33 +867,45 @@ def MatchedFilterFind(time, flux, signalfwhm=0.01):
 
     return
 '''
+def ed6890(bins, a):
+    
+    try:
+        ed68_i = min(bins[a >= 0.68])
+    except ValueError:
+        ed68_i = -99
 
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-# ALL FAKE FLARE FUNCTIONS:
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
+    try:
+        ed90_i = min(bins[a >= 0.90])
+    except ValueError:
+        ed90_i = -99
 
+    return ed68_i, ed90_i
 
-def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
+def FakeFlaresDist(std, nfake, ampl=(5e-1,5e2), dur=(5e-1,2e2),
+                   mode='hawley2014', scatter=False, debug=False):
     
     '''
     Creates different distributions of fake flares to be injected into light curves.
     
-    rand: Flares are distibuted randomly in dur and ampl   
+    rand: Flares are distibuted evenly in dur and ampl   
     hawley2014: Flares are distributed in a strip around to a power law with exponent alpha, see fig. 10 in Hawley et al. 2014
     
-    Input:
-    
+    Parameters:
+    -----------
     
     std: standard deviation of quiescent light curve 
-    ampl: amplitude range in relative (only for 'equidist' mode) flux units 
-    dur: duration range (only for 'equidist' mode) in minutes
     nfake: number of fake flares to be created
-    mode: distribution of fake flares in (duration,amplitude) space, default='hawley2014'
-    scatter: saves a scatter plot of the distribution for the injected sample, default='False'
+    ampl: amplitude range in relative (only for 'rand' mode) flux units, 
+          default=(5e-1,5e3) for consistency with 'hawley2014'
+    dur: duration range (only for 'rand' mode) in minutes, 
+         default=(5e-1,2e2) for consistency with 'hawley2014'
+    mode: distribution of fake flares in (duration,amplitude) space, 
+          default='hawley2014'
+    scatter: saves a scatter plot of the distribution for the injected sample, 
+             default='False'
     
-    Return:
+    Returns:
+    -------
     
     dur_fake: durations of generated fake flares in days
     ampl_fake: amplitudes of generated fake flares in relative flux units
@@ -1026,48 +913,42 @@ def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
     
     '''
     
-    #-----------------OVERRIDING VALUES: EXPERIMENTAL MODE--------------
-    ampl=(.5,5000.) #values of better consistency with Hawley et al. (2014) results
-    dur=(0.5,150.) #values of better consistency with Hawley et al. (2014) results
-    nfake=300
-    #-------------------------------------------------------------------
-    
     if mode=='rand':
     
         dur_fake =  (np.random.random(nfake) * (dur[1] - dur[0]) + dur[0])
         ampl_fake = (np.random.random(nfake) * (ampl[1] - ampl[0]) + ampl[0])*std
-        lndur_fake=np.log10(dur_fake)
-        lnampl_fake=np.log10(ampl_fake)
-        #print(min(lndur_fake),max(lndur_fake),min(lnampl_fake),max(lnampl_fake))
-        dur_fake=dur_fake/60./24.
+        lndur_fake = np.log10(dur_fake)
+        lnampl_fake = np.log10(ampl_fake)
+        dur_fake = dur_fake / 60. / 24.
         
         legend='Distribution random across ' + str(ampl) + ' rel. fl. u. and ' + str(dur) + ' min.'
         
         
-    if mode=='hawley2014':
+    elif mode=='hawley2014':
         
         c_range=np.array([np.log10(5)-6.,np.log10(5)-4.]) #estimated from fig. 10 in Hawley et al. 2014
         alpha=2.                                        #estimated from fig. 10 in Hawley et al. 2014
         ampl=(np.log10(2.*std),np.log10(10000.*std))
 
         lnampl_fake = (np.random.random(nfake) * (ampl[1] - ampl[0]) + ampl[0])
-
-
         lndur_fake=np.zeros(nfake, dtype='float')
         rand=np.random.random(nfake)
-        dur_max=(1./alpha)*(lnampl_fake-c_range[0]) #log(tmax)
-        dur_min=(1./alpha)*(lnampl_fake-c_range[1]) # log(tmin)
+        dur_max = (1./alpha) * (lnampl_fake-c_range[0]) #log(tmax)
+        dur_min = (1./alpha) * (lnampl_fake-c_range[1]) # log(tmin)
 
         for a in range(0,nfake):
-            lndur_fake[a]= (rand[a]* (dur_max[a] - dur_min[a]) + dur_min[a])
-
-        print(min(lndur_fake),max(lndur_fake),min(lnampl_fake),max(lnampl_fake))    
-        ampl_fake = np.power(np.full(nfake,10),lnampl_fake)
-        dur_fake=np.power(np.full(nfake,10),lndur_fake)/60. /24.
+            lndur_fake[a]= (rand[a] * (dur_max[a] - dur_min[a]) + dur_min[a])
+  
+        ampl_fake = np.power(np.full(nfake,10), lnampl_fake)
+        dur_fake=np.power(np.full(nfake,10), lndur_fake) / 60. / 24.
         
         legend='Distribution consistent with Hawley et al. (2014) observations.'
-        
-    if scatter==True:
+    
+    if debug == True:
+        print('Fake flares durations (1,2) and amplitudes (3,4):')
+        print(min(lndur_fake),max(lndur_fake),min(lnampl_fake),max(lnampl_fake))  
+    
+    if scatter == True:
         
         fig, ax = plt.subplots()
         ax.scatter(lndur_fake[:-1], lnampl_fake[:-1])
@@ -1075,16 +956,16 @@ def FakeFlaresDist(std,ampl,dur,nfake,mode='hawley2014',scatter=False):
         ax.set_ylabel(r'log amplitude (in rel. flux units)', fontsize=15)
         ax.set_title('Fake flares generated by Appaloosa\n'+legend, fontsize=12)
         ax.grid(color='0.5', linestyle='-', linewidth=1)
-        ax.axis([0.,2.5,-3.5,-0.5])
-        
-        plt.savefig(mode+'_fake_scatter.pdf')
+        #ax.axis([0.,2.5,-3.5,-0.5])
+        plt.show()
+        #plt.savefig(mode+'_fake_scatter.pdf')
     
         
     return dur_fake, ampl_fake    
 
 
 def FakeFlares(time, flux, error, flags, tstart, tstop,
-               nfake=10000, npass=1, ampl=(0.1,100), dur=(0.5,60),
+               nfake=100, npass=1, ampl=(0.1,100), dur=(0.5,60),
                outfile='', savefile=False, gapwindow=0.1,
                verboseout=False, display=False, debug=False):
     '''
@@ -1096,50 +977,24 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     amplitude defined multiples of the median error
 
     still need to implement npass, to re-do whole thing and average results
-    
-    Input:
-    
-    time: - 
-    flux:
-    error:
-    flags:
-    tstart:
-    tstop:
-    nfake: int - number of fake flares injected in a light curve segment
-    npass: bool
-    ampl: pair of floats, default=(0.1,100) - min and max flare amplitude in relative flux units
-    dur: pair of floats, default=(0.5,60) - min and max flare duration in minutes
-    outfile: 
-    savefile: bool, default=False
-    gapwindow: float, default=0.1
-    verboseout: bool, default=False
-    display: bool, default=False
-    debug: bool, default=False
-    
-    Output:
-    
-    ed_bin_center:
-    rec_bin:
-    ed_fake:
-    rec_fake:
     '''
 
     # QUESTION: how many fake flares can I inject at once?
     # i.e. can I get away with doing fewer re-runs with more flares injected?
-    #--------------------------------------------------------------------------
-    
-    
+    time, flux, error, flags,tstart,tstop = np.array(time), np.array(flux), np.array(error), np.array(flags), np.array(tstart), np.array(tstop)
     std = np.nanmedian(error)
-    dur_fake, ampl_fake = FakeFlaresDist(std,ampl,dur,nfake,mode='rand',scatter=True)
 
-
+    dur_fake, ampl_fake = FakeFlaresDist(std, nfake, mode='hawley2014', debug=debug)
 
     t0_fake = np.zeros(nfake, dtype='float')
     s2n_fake = np.zeros(nfake, dtype='float')
     ed_fake = np.zeros(nfake, dtype='float')
 
-    new_flux = np.array(flux, copy=True)
-
+    new_flux = np.array(flux)#, copy=True)
+    time = np.array(time)
+    error = np.array(error) 
+    flags = np.array(flags)
+    
     for k in range(nfake):
         # generate random peak time, avoid known flares
         isok = False
@@ -1186,20 +1041,20 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
             if (len(rec[0]) > 0):
                 rec_fake[k] = 1
 
-    # nbins = int(nfake/10.)
-    # if nbins < 10:
-    #     nbins = 10
-    nbins = 20
-
+    nbins = nfake//10
+    if nbins < 10:
+         nbins = 10
+    
     # the number of events per bin recovered
-    rec_bin_N, ed_bin = np.histogram(ed_fake, weights=rec_fake, bins=nbins)#weight is either 1 or zero
+    rec_bin_N, ed_bin = np.histogram(ed_fake, weights=rec_fake, bins=nbins)
     # the number of events per bin
     rec_bin_D, _ = np.histogram(ed_fake, bins=nbins)
 
     ed_bin_center = (ed_bin[1:] + ed_bin[:-1])/2.
-
-    rec_bin = rec_bin_N / rec_bin_D
-
+    rec = pd.DataFrame({'N':rec_bin_N,'D':rec_bin_D,'bins':ed_bin_center})
+    rec = rec[rec.D != 0.]
+    rec['rec_rate'] = rec.N/rec.D
+    #rec_bin = np.nan_to_num(rec_bin, copy=True)
     if savefile is True:
         # look to see if output folder exists
         # fldr = objectid[0:3]
@@ -1209,70 +1064,46 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
         #         os.makedirs(outdir)
         #     except OSError:
         #         pass
+        
+        header = ['min_time','max_time','std_dev','nfake',
+                  'min_amplitude','max_amplitude',
+                  'min_duration','max_duration',
+                  'ed68_i','ed90_i',
+                 ]
 
-        rl = np.isfinite(rec_bin)
-        w_in = rec_bin[rl]
-
-        frac_rec_sm = wiener(w_in, 3)
-
-        # print('>')
-        # print('rl ', len(rl), rl)
-        # print('rec_bin ', len(rec_bin), rec_bin)
-        # print('w_in', np.size(w_in), w_in)
-        # print('frac_rec_sm', len(frac_rec_sm), frac_rec_sm)
-
+        if glob.glob(outfile)==[]:
+            dfout = pd.DataFrame()
+            metadata = dict()
+        else:
+            dfout, metadata = h5load(pd.HDFStore(outfile))
+        
         # use this completeness curve to estimate 68% complete
-        x68 = np.where((frac_rec_sm >= 0.68))
-        if len(x68[0])>0:
-            ed68_i = min(ed_bin_center[rl][x68])
-        else:
-            ed68_i = -99
-
-        x90 = np.where((frac_rec_sm >= 0.90))
-        if len(x90[0])>0:
-            ed90_i = min(ed_bin_center[rl][x90])
-        else:
-            ed90_i = -99
-
-        outstring = str(min(time)) + ', ' + str(max(time)) + ', ' + str(std) + \
-                    ', ' + str(nfake) + ', ' + str(ampl[0]) + ', ' + str(ampl[1]) + \
-                    ', ' + str(dur[0]) + ', ' + str(dur[1]) + \
-                    ', ' + str(ed68_i) + ', ' + str(ed90_i) + '\n'
-
-        # print(len(ed_bin_center), len(rec_bin), len(frac_rec_sm), len(rl))
+        #rl = np.isfinite(rec_bin)
+        #w_in = rec_bin[rl]
+        rec['frac_rec_sm'] = wiener(rec.rec_rate, 3)
+        ed68_i, ed90_i = ed6890(rec.bins,rec.frac_rec_sm)
+        
+        outrow = [[item] for item in [min(time), max(time), std, nfake, ampl[0], 
+                  ampl[1], dur[0], dur[1], ed68_i, ed90_i,]]
+        
         if verboseout is True:
-            for i in range(len(w_in)-1):
-                outstring = outstring + \
-                            str(ed_bin_center[rl][i]) + ', ' + \
-                            str(rec_bin[rl][i]) + ', ' + \
-                            str(frac_rec_sm[i]) + '\n'
+            for i, row in rec.iterrows():
+                header = header + ['ed_bin_center', 'rec_bin', 'frac_rec_sm']
+                outrow = outrow+[[row.bins],[row.rec_rate], [row.frac_rec_sm]]
+                dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
+        else:
+            dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
+        h5store(outfile,dfout,**metadata)
 
-        # use mode "a+", append or create
-        ff = open(outfile, 'a+')
-        ff.write(outstring)
-        ff.close()
-
-    # if display is True:
-    #     plt.figure()
-    #     plt.plot(ed_bin_center, rec_bin)
-    #     plt.xlabel('ED bin center')
-    #     plt.ylabel('Fraction of recovered events')
-    #     plt.title('FakeFlares')
-    #     plt.show()
-
-    return ed_bin_center, rec_bin, ed_fake, rec_fake
-
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
-# MAIN WRAPPER FUNCTION
-#-----------------------------------------------------------------------------------------------------------------------------
-#-----------------------------------------------------------------------------------------------------------------------------
+    #centers of bins, fraction of recovered fake flares per bin, EDs of generated fake flares, 
+    return ed_fake, rec_fake
 
 
 # objectid = '9726699'  # GJ 1243
 def RunLC(file='', objectid='', ftype='sap', lctype='',
           display=False, readfile=False, debug=False, dofake=True,
-          dbmode='fits', gapwindow=0.1, maxgap=0.125, verbosefake=False, nfake=100, writeout=False):
+          dbmode='fits', gapwindow=0.1, maxgap=0.125, 
+          verbosefake=True, nfake=100, iterations=10):
     '''
     Main wrapper to obtain and process a light curve
     '''
@@ -1291,10 +1122,9 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         print(str(datetime.datetime.now()) + ' GetLC started')
         print(file, objectid)
 
-    #####################
+    #---------------------------------------------------
     if dbmode is 'mysql':
         data_raw = GetLCdb(objectid, readfile=readfile, type=lctype, onecadence=False)
-
         data = OneCadence(data_raw)
 
         # data columns are:
@@ -1327,92 +1157,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         # open the output file to store data on every flare recovered
         outfile = outdir + objectid
 
-
-    ######################
-    elif dbmode is 'fits':
-        
-        if KeplerorK2(file)==2: objectid = str(int( file[file.find('ktwo')+4:file.find('-')] ))        
-        elif KeplerorK2(file)==1:objectid = str(int( file[file.find('kplr')+4:file.find('-')] ))
-        elif KeplerorK2(file)==2.1:objectid = str(int( file[file.find('llc')+4:file.find('-')] ))
-        qtr, time, lcflag, exptime, flux_raw, error, time_res, quarter_num = GetLCfits(file)
-
-        # put flare output in to a set of subdirectories.
-        # use first 3 digits to help keep directories to ~1k files
-        fldr = objectid[0:3]
-        outdir = 'aprun/' + fldr + '/'
-        if not os.path.isdir(outdir):
-            try:
-                os.makedirs(outdir)
-            except OSError:
-                pass
-
-        outfile = outdir + file[file.find('kplr'):]
-        # file.replace('data', 'results')
-
-    ######################
-    elif dbmode is 'k2':
-        objectid = str(int( file[file.find('ktwo')+4:file.find('-')] ))
-        qtr, time, lcflag, exptime, flux_raw, error = GetLCk2(file)
-
-        # just put the output right along side the input. Not awesome, but works
-        outfile = file
-
-    ######################
-    elif dbmode is 'vdb':
-        objectid = str(int(file[file.find('lightcurve_')+11:file.find('-')]))
-        qtr, time, lcflag, exptime, flux_raw, error = GetLCvdb(file)
-
-        # put the output in the local research dir
-        fldr = objectid[0:3]
-        home = expanduser("~")
-        outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
-        if not os.path.isdir(outdir):
-            try:
-                os.makedirs(outdir)
-            except OSError:
-                pass
-        outfile = outdir + file[file.find('lightcurve_')+11:]
-
-    ######################
-    elif dbmode is 'csv':
-        objectid = '0000'
-        qtr, time, lcflag, exptime, flux_raw, error = GetLCvdb(file)
-
-        # put the output in the local research dir
-        fldr = objectid[0:3]
-        home = expanduser("~")
-        outdir = home + '/research/k2_cluster_flares/aprun/'
-        if not os.path.isdir(outdir):
-            try:
-                os.makedirs(outdir)
-            except OSError:
-                pass
-        outfile = outdir + file[file.find('lightcurve_') + 11:]
-
-    ######################
-    elif dbmode is 'everest':
-        objectid = str(int(file[file.find('everest')+15:file.find('-')]))
-        qtr, time, lcflag, exptime, flux_raw, error, quarter_num, time_res = GetLCeverest(file)
-
-        # put the output in the local research dir
-        fldr = objectid[0:3]
-        home = expanduser("~")
-        outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
-        if not os.path.isdir(outdir):
-            try:
-                os.makedirs(outdir)
-            except OSError:
-                pass
-        outfile = outdir + file[file.find('everest')+15:]
-
-    ######################
-    elif dbmode is 'txt':
-        objectid = file[0:3]
-        qtr, time, lcflag, exptime, flux_raw, error = GetLCtxt(file)
-
-        # just put the output right along side the input. Not awesome, but works
-        outfile = file
-
+    elif dbmode in ('txt','ktwo','everest','vdb','csv','fits'):
+        outfile, objectid, qtr, time, lcflag, exptime, flux_raw, error = Get(dbmode,file, objectid)
+    
+    #-----------------------------------------------
 
     if debug is True:
         print('outfile = ' + outfile)
@@ -1432,11 +1180,9 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         print(dr)
 
     # uQtr = np.unique(qtr)
-
     istart = np.array([], dtype='int')
     istop = np.array([], dtype='int')
-    ed68 = []
-    ed90 = []
+
     flux_model = np.zeros_like(flux_gap)
 
     for i in range(0, len(dl)):
@@ -1448,114 +1194,76 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                                                     error[dl[i]:dr[i]], lcflag[dl[i]:dr[i]],
                                                     gapwindow=gapwindow, debug=debug)
 
-        # run artificial flare test in this gap
-        if debug is True:
-            print(str(datetime.datetime.now()) + ' FakeFlares started')
-
-        if dofake is True:
-            ed_fake_tot=np.empty([0])#sum 
-            rec_fake_tot=np.empty([0])#sum
-            for ninj in range(0,1):#added loop
-                medflux = np.nanmedian(flux_model_i) # flux needs to be normalized
-
-                if len(istart_i)>0:
-                    t_tmp1 = time[dl[i]:dr[i]][istart_i]
-                    t_tmp2 = time[dl[i]:dr[i]][istop_i]
-                else:
-                    t_tmp1 = []
-                    t_tmp2 = []
-                ed_fake, frac_rec,ed_fake_ninj, rec_fake_ninj = FakeFlares(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]]/medflux - 1.0,
-                                            error[dl[i]:dr[i]]/medflux, lcflag[dl[i]:dr[i]],
-                                            t_tmp1, t_tmp2,
-                                            savefile=True, verboseout=verbosefake, gapwindow=gapwindow,
-                                            outfile=outfile + '_' +str(ninj) +'.fake', display=display,#added ninj = Number of INJections
-                                            nfake=nfake, debug=debug)
-
-                ed_fake_tot=np.append(ed_fake_tot, ed_fake_ninj)
-                rec_fake_tot=np.append(rec_fake_tot, rec_fake_ninj)
-                rl = np.isfinite(frac_rec)
-                frac_rec_sm = wiener(frac_rec[rl], 3)
-                
-                
-                # use this completeness curve to estimate 68% complete
-                x68 = np.where((frac_rec_sm >= 0.68))
-                if len(x68[0])>0:
-                    ed68_i = min(ed_fake[rl][x68])
-                else:
-                    ed68_i = -99
-
-                x90 = np.where((frac_rec_sm >= 0.90))
-                if len(x90[0])>0:
-                    ed90_i = min(ed_fake[rl][x90])
-                else:
-                    ed90_i = -99
-
-                #if display is True:
-                    # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
-                    #plt.figure()
-                    #plt.plot(ed_fake, frac_rec, c='k')
-                    #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
-                    #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
-                    #plt.xlabel('Flare Equivalent Duration (seconds)')
-                    #plt.ylabel('Fraction of Recovered Flares')
-
-                    #plt.xlim((0,np.nanmax(ed_fake)))
-                    #plt.savefig(file + '_fake_recovered_'+ str(ninj)+ '.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
-                    #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
-                    #plt.show()
-                    
-            #HERE I COPY AND PASTE STUFF FROM FAKEFLARES START
-            #nbins = 50
-            nbins=int(np.ceil(max(ed_fake_tot)/2.))
-            print('number of bins: ' + str(nbins))
-            # the number of events per bin recovered
-            rec_bin_N, ed_bin = np.histogram(ed_fake_tot, weights=rec_fake_tot, bins=nbins)
-            # the number of events per bin
-            rec_bin_D, _ = np.histogram(ed_fake_tot, bins=nbins)
-
-            ed_bin_center = (ed_bin[1:] + ed_bin[:-1])/2.
-
-            frac_rec_tot = rec_bin_N / rec_bin_D#umbenannt
-            
-            #Save the recovery rate plot data as txt file for future compilations:
-            
-            #os.chdir(str(sys.argv[1])) #go where the data are stored
-            os.chdir(file)
-            rec_rate = open(file+'recrate.txt', 'w')
-            for k in range(0,nbins):
-                if ed_bin_center[k]!='nan' and frac_rec_tot[k]!='nan':
-                    rec_rate.write(str(ed_bin_center[k]) + '\t' + str(frac_rec_tot[k])+'\n')
-            rec_rate.close()
-            #End of file saving
-            
-            if display is True:
-                    # print(np.shape(ed_fake), np.shape(frac_rec), np.shape(rl), np.shape(frac_rec_sm))
-                    
-                    plt.figure()
-                    plt.plot(ed_bin_center, frac_rec_tot, c='k')
-                    #plt.plot(ed_fake[rl], frac_rec_sm, c='red', linestyle='dashed', lw=2)
-                    #plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
-                    plt.xlabel('$ED$ (s)')
-                    plt.ylabel('Fraction of Recovered Flares')
-
-                    plt.xlim((0,np.nanmax(ed_fake_tot)))
-                    plt.savefig(file + '_fake_recovered_tot.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
-                    #plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5) #original
-                    plt.show()
-            
-            #HERE I COPY AND PASTE STUFF END
-        else:
-            # for speed you can skip the fake-flare tests
-            ed68_i = -199
-            ed90_i = -199
-
-        ed68 = np.append(ed68, np.zeros(len(istart_i)) + ed68_i)
-        ed90 = np.append(ed90, np.zeros(len(istart_i)) + ed90_i)
-
         istart = np.array(np.append(istart, istart_i + dl[i]), dtype='int')
         istop = np.array(np.append(istop, istop_i + dl[i]), dtype='int')
-
         flux_model[dl[i]:dr[i]] = flux_model_i
+
+
+    df1 = pd.DataFrame({'istart':istart,
+                        'istop':istop,
+                        'ed68':np.full_like(istart,-99),
+                        'ed90':np.full_like(istart,-99)})
+    df2 = pd.DataFrame({'flux_model':flux_model,
+                        'time':time,
+                        'flux_gap':flux_gap,
+                        'lcflag':lcflag,
+                        'error':error})
+
+    if debug is True:
+        print(str(datetime.datetime.now()) + ' FakeFlares started')
+    
+    if dofake is True:
+        dffake = pd.DataFrame()
+        
+        for k in range(iterations):
+            for l,r in list(zip(dl,dr)):
+                df2t= df2.iloc[l:r]
+                df1t = df1[(df1.istart > l) & (df1.istop <r)]
+                medflux = df2t.flux_model.median()# flux needs to be normalized
+                tmp1 = df2t.time[df1t.istart]
+                tmp2 = df2t.time[df1t.istop]
+                _ = pd.DataFrame()
+                _['ed_fake'], _['rec_fake'] = FakeFlares(df2t.time,df2t.flux_gap/medflux - 1.0,
+                                                         df2t.error/medflux, df2t.lcflag, tmp1, tmp2,
+                                                         savefile=True, verboseout=verbosefake,
+                                                         gapwindow=gapwindow, outfile=outfile + '_fake.h5',
+                                                         display=display, nfake=nfake, debug=debug)
+                
+                _ = _.dropna(how='any') 
+                dffake = dffake.append(_, ignore_index=True)
+        dffake.to_csv('{}_all_fakes.csv'.format(outfile))      
+        bins = np.linspace(0, dffake.ed_fake.max() + 1, nfake * iterations // 20)
+        binmids = np.concatenate(([0],(bins[1:]+bins[:-1])/2))
+        
+        frac_recovered = dffake.rec_fake.groupby(np.digitize(dffake.ed_fake, bins)).mean()
+        frac_recovered[0] = 0 #add a zero intercept for aesthetics
+        frac_recovered.sort_index(inplace=True) #helps plotting
+        binmids = np.concatenate(([0],(bins[1:]+bins[:-1])/2)) #add a zero intercept for aesthetics
+
+        dffake = pd.DataFrame({'ed_bins': binmids[frac_recovered.index.values],
+                               'frac_recovered': frac_recovered,
+                               'frac_rec_sm': wiener(frac_recovered,3)})
+        
+        # use frac_rec_sm completeness curve to estimate 68%/90% complete
+        ed68_i, ed90_i = ed6890(dffake.ed_bins,dffake.frac_rec_sm)
+        df1['ed68'], df1['ed90'] = ed68_i, ed90_i
+        
+        if display is True:
+            plt.figure()
+            plt.plot(dffake.ed_bins, dffake.frac_recovered, c='k')
+            #plt.plot(dffake.ed_bins, dffake.frac_rec_sm, c='red', linestyle='dashed', lw=2)
+            plt.vlines([ed68_i, ed90_i], ymin=0, ymax=1, colors='b',alpha=0.75, lw=5)
+            plt.xlabel('Flare Equivalent Duration (seconds)')
+            plt.ylabel('Fraction of Recovered Flares')
+            plt.title('Artificial Flare injection, N = {}'.format(nfake*iterations))
+            plt.xlim((0,2e3))#np.nanmax(dffake.ed_bins)
+            plt.savefig(file + '_fake_recovered.pdf',dpi=300, bbox_inches='tight', pad_inches=0.5)
+            plt.show()
+
+        else:
+            df1['ed68'] = -199
+            df1['ed90'] = -199
+        
 
         # look at the completeness curve
         # plt.figure()
@@ -1581,13 +1289,11 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     istart, istop = DetectCandidate(time, flux_gap, error, lcflag, flux_model)
     '''
 
-    # print(istart)
-
     if display is True:
         print(str(len(istart))+' flare candidates found')
-    
-        plt.subplots(figsize=(5,1))
-        plt.errorbar(time, flux_gap, yerr=error, color='k',alpha=0.7, lw=0.2,ecolor='g')
+
+        plt.figure()
+        plt.plot(time, flux_gap, 'k', alpha=0.7, lw=0.8)
 
         # for g in dl:
         #     plt.scatter(time[g], flux_gap[g], color='blue', marker='v',s=40)
@@ -1600,40 +1306,14 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
         plt.plot(time, flux_model, 'blue', lw=3, alpha=0.7)
 
-     
 
         plt.xlabel('Time (BJD - 2454833 days)')
-        plt.ylabel(r'Flux ($e^-$ sec$^{-1}$)')
+        plt.ylabel(r'Flux (e- sec$^{-1}$)')
 
         xdur = np.nanmax(time) - np.nanmin(time)
         xdur0 = np.nanmin(time) + xdur/2.
         xdur1 = np.nanmin(time) + xdur/2. + 2.6
         plt.xlim(xdur0, xdur1) # only plot a chunk of the data
-        
-        options, RGB = KeplerLCflags()
-       
-        
-  
-       
-        events=np.zeros(len(lcflag)) #lcflag stores SAP_QUALITY flags
-        events_colors=np.zeros((len(lcflag),3)) #information on the color coding of the present flag
-        events_colors[:]=(0,0,0)#default color
-        
-        #convert flags into colors
-        for x in range(0,len(lcflag)):
-            fl=lcflag[x]
-            if fl!=0: 
-                events[x]=flux_gap[x] #puts the marker where the light curve is
-                if fl in options: #if the flag bit is set
-                    name, color = options[fl] #returns the flag description and the corresponding color
-                    events_colors[x]=color
-                else: events_colors[x]=(0,0,0)#black for unknown flag bits or better RAISE A warning?
-                
-                        
-
-        
-        plt.scatter(time,events,s=3,c=events_colors, marker='o')
-
 
         xdurok = np.where((time >= xdur0) & (time <= xdur1))
         if len(xdurok[0])>0:
@@ -1642,31 +1322,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 plt.ylim(yminmax[0], yminmax[1])
 
         plt.savefig(file + '_lightcurve.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
-        #plt.show()
-        
-       
-        
-    
-    if writeout is True:
-        #os.chdir(str(sys.argv[1])) #go where the data are stored
-        os.chdir('/home/ekaterina/Documents/appaloosa')
-        if os.path.isfile('flarelist.txt') == False: #check if output file already exists
-            with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
-                firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Quarter \t Total Exposure Time of LC in Days \t Time Resolution in [min] \t BJD-2454833 days \n', 'utf-8') #write a header line
-                myfile.write(firstline)    #write it into table
-        with open('flarelist.txt', 'a') as  myfile: #othewise just open the file
-            line=str(objectid)+ '\t'+ str(datetime.datetime.now())+'\t'  + str(len(istart))+'\t' + str(file)+'\t'+ str(quarter_num) + '\t' + str(np.sum(exptime)) + '\t'+ str(time_res) + '\t' + str(time[0]) + '\n' #insert output params
-
-            print(line)
-            myfile.write(line)
-            myfile.close()
-
-		#Write data frames to file for later processing to FFDs and such.
-        df1 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model})
-        df2 = pd.DataFrame({ 'istart':istart,'istop':istop})
-        df1.to_csv(objectid + '_flux.csv')
-        df2.to_csv(objectid + '_flares.csv')
-
+        plt.show()
 
     '''
     #-- IF YOU WANT TO PLAY WITH THE WAVELET STUFF MORE, WORK HERE
@@ -1687,67 +1343,65 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     # set this to silence bad fit warnings from polyfit
     warnings.simplefilter('ignore', np.RankWarning)
-
-    outstring = ''
-    outstring = outstring + '# ObjectID = ' + objectid + '\n'
-    outstring = outstring + '# File = ' + file + '\n'
-    now = datetime.datetime.now()
-    outstring = outstring + '# Date-Run = ' + str(now) + '\n'
-    outstring = outstring + '# Appaloosa-Version = ' + __version__ + '\n'
-
-    # outstring = outstring + '# ED68 = ' + str(ed68T) + '\n'
-    # outstring = outstring + '# ED90 = ' + str(ed90T) + '\n'
-
-    outstring = outstring + '# N_epoch in LC = ' + str(len(time)) + '\n'
-    outstring = outstring + '# Total exp time of LC = ' + str(np.sum(exptime)) + '\n'
-    outstring = outstring + '# Columns: '
+    
+    metadata = {'ObjectID' : objectid,
+                 'File' : file,
+                 'Date-Run' : str(datetime.datetime.now()),
+                 'Appaloosa-Version': __version__,
+                 'N_epoch in LC' : str(len(time)),
+                 'Total exp time of LC' : str(np.sum(exptime)),
+                 }
 
     if debug is True:
         print(str(datetime.datetime.now()) + 'Getting output header')
+        
     header = FlareStats(time, flux_gap, error, flux_model,
                         ReturnHeader=True)
-    header = header + ', ED68i, ED90i '
-    outstring = outstring + '# ' + header + '\n'
-
+    header = header + ['ED68i','ED90i']
+    dfout = pd.DataFrame()
+    
     if debug is True:
         print(str(datetime.datetime.now()) + 'Getting FlareStats')
+        
     # loop over EACH FLARE, compute stats
     for i in range(0,len(istart)):
         stats_i = FlareStats(time, flux_gap, error, flux_model,
                              istart=istart[i], istop=istop[i])
-
-        outstring = outstring + str(stats_i[0])
-        for k in range(1,len(stats_i)):
-            outstring = outstring + ', ' + str(stats_i[k])
-
-        outstring = outstring + ', ' + str(ed68[i]) + ', ' + str(ed90[i])
-        outstring = outstring + '\n'
-
-
-    fout = open(outfile + '.flare', 'w')
-    fout.write(outstring)
-    fout.close()
-
+        _ = [[item] for item in [*stats_i,df1.ed68.iloc[i],df1.ed90.iloc[i]]]
+        dfout = dfout.append(pd.DataFrame(dict(zip(header,_))),
+                             ignore_index=True)
+        
+    h5store(outfile + '_flare.h5',dfout,**metadata)
     return
 
+#Use h5 to store metadata and data such that it is easy to propagate, 
+#found here: https://stackoverflow.com/a/29130146
+#originally from Pandas Cookbook
+
+def h5store(filename, df, **kwargs):
+    store = pd.HDFStore(filename)
+    store.put('mydata', df)
+    store.get_storer('mydata').attrs.metadata = kwargs
+    store.close()
+    return
+
+def h5load(store):
+    data = store['mydata']
+    metadata = store.get_storer('mydata').attrs.metadata
+    store.close()
+    return data, metadata
 
 
-
-
-#file:///work1/eilin/data/kplr009726699-2010203174610_slc.fits
 # let this file be called from the terminal directly. e.g.:
-# $python appaloosa.py folder
-#if __name__ == "__main__":
-#    import sys
-
-#    from fnmatch import fnmatch
-#    import os
-#    #data=GetLCdb(objectid='9726699', type='', readfile=False,
-#       #   savefile=False, exten = '.lc.gz',
-#        #  onecadence=False)
-#    #print(data)
-#	#os.chdir(str(sys.argv[1]))
-##    for myfile in os.listdir(str(sys.argv[1])):
-##        if fnmatch(myfile,'*llc.fits'): 
-#	RunLC(myfile, dbmode='fits', display=True, debug=True, dofake=False, writeout=True)
-
+# $python appaloosa.py 12345678
+if __name__ == "__main__":
+    import sys
+    import warnings
+    warnings.filterwarnings("ignore")
+    #RunLC(file=str(sys.argv[1]), dbmode='fits', display=True, debug=True, nfake=10, iterations=20)
+    file = '/home/ekaterina/Documents/appaloosa/stars_shortlist/M44/hlsp_everest_k2_llc_211943618-c05_kepler_v2.0_lc.fits'
+    RunLC(file=file, dbmode='everest', display=True, debug=False, nfake=20, iterations=3000)
+    #file = '/home/ekaterina/Documents/vanderburg/hlsp_k2sff_k2_lightcurve_220132548-c08_kepler_v1_llc-default-aper.txt'
+    #RunLC(file=file, dbmode='vdb', display=True, debug=False, nfake=20, iterations=20)
+    #file = '/home/ekaterina/Documents/appaloosa/misc/testdata/ktwo210422945-c04_llc.fits'
+    #RunLC(file=file, dbmode='ktwo', display=True, debug=False, nfake=20, iterations=20)
