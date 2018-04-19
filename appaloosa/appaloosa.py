@@ -297,7 +297,7 @@ def GetLCeverest(file):
     hdu = fits.open(file)
     data_rec = hdu[1].data
     lc = pd.DataFrame({'time':np.array(data_rec['TIME']).byteswap().newbyteorder(),
-                      'flux_raw':np.array(data_rec['FCORR']).byteswap().newbyteorder(),})
+                      'flux_raw':np.array(data_rec['FCOR']).byteswap().newbyteorder(),})
     #keep the outliers... for now
     #lc['quality'] = data_rec['OUTLIER'].byteswap().newbyteorder()
   
@@ -1407,7 +1407,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             myfile.close()
 
         #Write data frames to file for later processing to FFDs and such.
-        df1 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model})
+        df1 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model,'error':error})
         df2 = pd.DataFrame({'istart':istart,'istop':istop,'ampl':ampl,
                             'dur':durat, 'ed':ed, 'ederr': ederr})
         df1.to_csv(objectid + '_flux.csv')
