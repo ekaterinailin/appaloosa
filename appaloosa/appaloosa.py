@@ -1119,7 +1119,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     Main wrapper to obtain and process a light curve
     '''
 
-
+    os.chdir('/home/ekaterina/Documents/appaloosa')
     # pick and process a totally random LC.
     # important for reality checking!
     if (objectid is 'random'):

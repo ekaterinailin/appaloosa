@@ -7,7 +7,7 @@ import specmatchemp.library
 import specmatchemp.plots as smplot
 from scipy.integrate import trapz
 from scipy.constants import pi, h, c, k
-from pandas.api.types import CategoricalDtype
+
 from bokeh.plotting import figure, output_file, show, ColumnDataSource
 from bokeh.models import CustomJS, Button
 from bokeh.layouts import row, column
