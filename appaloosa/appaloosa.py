@@ -297,7 +297,7 @@ def GetLCeverest(file):
     hdu = fits.open(file)
     data_rec = hdu[1].data
     lc = pd.DataFrame({'time':np.array(data_rec['TIME']).byteswap().newbyteorder(),
-                      'flux_raw':np.array(data_rec['FCOR']).byteswap().newbyteorder(),})
+                      'flux_raw':np.array(data_rec['FLUX']).byteswap().newbyteorder(),})
     #keep the outliers... for now
     #lc['quality'] = data_rec['OUTLIER'].byteswap().newbyteorder()
   
@@ -806,7 +806,7 @@ def MultiFind(time, flux, error, flags, mode=3,
 
         signalfwhm = dt * 2
         ftime = np.arange(0, 2, dt)
-        modelfilter = aflare1(ftime, 1, signalfwhm, 1)
+        #modelfilter = aflare1(ftime, 1, signalfwhm, 1)
         #flux_diff = signal.correlate(flux - flux_model, modelfilter, mode='same')
         flux_diff = flux - flux_model
         
