@@ -56,13 +56,16 @@ def CMD(specs,cluster,cid1='gmag',cid2='imag',color='g_i',ylim=(19,5),outliers=p
     '''
     specs[color]=specs[cid1]-specs[cid2]
     plot = specs.plot(x=color,y=cid1,ylim=ylim,kind = 'scatter', 
-                      color=color_outlier_red(specs.index.values,outliers))
+                      color=color_outlier_red(specs.index.values,outliers),
+                      figsize=(5,4),title=readable(cluster))
     plot.set_ylabel(cid1[0])
     plot.set_xlabel('{}-{}'.format(cid1[0],cid2[0]))
     fig = plot.get_figure()
     fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color),dpi=300)
     return
 
+def readable(string):
+    return ''.join([' ' if i=='_' else i for i in string])
 
 def color_outlier_red(val,outliers):
     """
