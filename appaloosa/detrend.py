@@ -69,8 +69,8 @@ def GapFlat(time, flux, order=3, maxgap=0.125):
 
     for i in range(0, len(dl)):
         krnl = int(float(dl[i]-dr[i]) / 100.0)
-        if (krnl < 10):
-            krnl = 10
+        if (krnl < 3):
+            krnl = 3
         flux_sm = rolling_median(flux[dl[i]:dr[i]], krnl)
 
         indx = np.isfinite(flux_sm)

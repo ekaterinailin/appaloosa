@@ -1,42 +1,82 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from scipy.odr import Model, RealData, ODR
+from scipy.optimize import fmin
 
-def linfit(x,y,x_err,y_err):
+def logL(X,*args):
+    '''
+    Calculate the term that has to be minimized 
+    to find the best-fit line parameters in X 
+    
+    Parameters:
+    -----------
+    X - (b, theta=arctan(m)) intercept and slope of line fit
+    *args - (x, y, sigy, sigx, sigxy) 
+    
+    
+    Return:
+    --------
+    -ln(likelihood)
+    
+    '''
+    
+    b, theta = X
+    L = []
+    Lx, Ly, Lsigy, Lsigx, Lsigxy = args
+    
+    for (x, y, sigy, sigx, sigxy) in list(zip(Lx, Ly, Lsigy, Lsigx, Lsigxy)):
 
-    # Define a function (quadratic in our case) to fit the data with.
-    def lin_func(p, x):
-        m, c = p
-        return m*x+c
+        c = np.cos(theta)
+        s = np.sin(theta)
+        B = ((-1.) * (s * x)) + (c * y) - (b * c)
+        A = (sigx * (s**2)) - (2 * sigxy * s * c) + (sigy * (c**2))
+        L.append(0.5 * (B**2) / A)
 
-    # Create a model for fitting.
-    lin_model = Model(lin_func)
+    return sum(L)
 
-    # Create a RealData object using our initiated data from above.
-    data = RealData(x, y, sx=x_err, sy=y_err)
-
-    # Set up ODR with the model and data.
-    odr = ODR(data, lin_model, beta0=[0., 1.])
-
-    # Run the regression.
-    out = odr.run()
-
-    # Use the in-built pprint method to give us results.
-    #out.pprint()
-    '''Beta: [ 1.01781493  0.48498006]
-    Beta Std Error: [ 0.00390799  0.03660941]
-    Beta Covariance: [[ 0.00241322 -0.01420883]
-     [-0.01420883  0.21177597]]
-    Residual Variance: 0.00632861634898189
-    Inverse Condition #: 0.4195196193536024
-    Reason(s) for Halting:
-      Sum of squares convergence'''
-
-    #x_fit = np.linspace(x[0], x[-1], 1000)
-    #y_fit = lin_func(out.beta, x_fit)
-
-    #plt.errorbar(x, y, xerr=x_err, yerr=y_err, linestyle='None', marker='x')
-    #plt.plot(x_fit, y_fit)
-
-   # plt.show()
-    return out.beta, out.sd_beta
+def linfit(data):
+    
+    '''
+    Fits a linear function to a data set with errors in x and y,
+    calculates errors on best fit parameters using jackknife algorithm
+    
+    
+    Parameters:
+    ------------
+    data - DataFrame with x, y, sigx, sigy, rho (correlation factor)
+    
+    Return:
+    (m_mean, msig) - slope with uncertainty
+    (b_mean, bsig) - intercept with uncertainty
+    '''
+    
+    b_, theta_ = [], []
+    data = data.applymap(float)
+    data['sigxy']=data.sigy*data.sigx*data.rho
+    mi, ma = data.x.min(),data.x.max()
+    t = np.arange(mi,ma,(ma-mi)/200.)
+    
+    #fig = plt.figure(figsize=(8,6))
+        
+    for id_ in data.index.values:
+        d = data.drop(id_)
+        x, y, sigy, sigx, sigxy = d.x, d.y, d.sigy, d.sigx, d.sigxy
+        b, theta = fmin(logL, [60,1.5],
+                        args=(d.x, d.y, d.sigy, d.sigx, d.sigxy),
+                        disp=0)
+        lin = b + np.tan(theta) * t
+        plt.plot(t, lin, alpha=0.2)
+        b_.append(b)
+        theta_.append(theta)
+    
+    #plt.scatter(x=data.x, y=data.y)
+    N = data.shape[0]
+    b_, theta_ = np.asarray(b_), np.asarray(theta_)
+    m_ = np.tan(theta_)
+    m_mean = m_.mean()
+    b_mean = b_.mean()
+    sigm = np.sqrt( (N-1) / N * ( (m_ - m_mean)**2 ).sum() )
+    sigb = np.sqrt( (N-1) / N * ( (b_ - b_mean)**2 ).sum() )
+    print('m = {} +/- {},\nb = {} +/- {} '.format(m_mean, sigm, b_mean, sigb))
+    return (m_mean, sigm), (b_mean, sigb)
+ 
