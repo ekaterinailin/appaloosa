@@ -3,7 +3,7 @@ Use this file to keep various detrending methods
 
 '''
 import numpy as np
-#from pandas import rolling_median #, rolling_mean, rolling_std, rolling_skew
+from pandas import rolling_median #, rolling_mean, rolling_std, rolling_skew
 import pandas as pd
 from scipy.optimize import curve_fit
 from gatspy.periodic import LombScargleFast
@@ -72,7 +72,8 @@ def GapFlat(time, flux, order=3, maxgap=0.125):
         krnl = int(float(dl[i]-dr[i]) / 100.0)
         if (krnl < 10):
             krnl = 10
-        flux_sm = np.array(pd.Series(flux).iloc[dl[i]:dr[i]].rolling(krnl).median())
+        #flux_sm = np.array(pd.Series(flux).iloc[dl[i]:dr[i]].rolling(krnl).median())
+        flux_sm = rolling_median(flux[dl[i]:dr[i]], krnl)
         indx = np.isfinite(flux_sm)
         fit = np.polyfit(time[dl[i]:dr[i]][indx], flux_sm[indx], order)
         flux_flat[dl[i]:dr[i]] = flux[dl[i]:dr[i]] - np.polyval(fit, time[dl[i]:dr[i]]) + tot_med
@@ -107,8 +108,9 @@ def QtrFlat(time, flux, qtr, order=3):
         if (krnl < 10):
             krnl = 10
 
+        df['flux_sm'] = rolling_median(np.array(df.flux, dtype='float'), krnl)
 
-        df['flux_sm'] = df.flux.rolling(krnl,center=False).median()
+        #df['flux_sm'] = df.flux.rolling(krnl,center=False).median()
         df = df.dropna(how='any')
     
         fit = np.polyfit(np.array(df.time), np.array(df.flux_sm), order)
@@ -359,7 +361,8 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
     for k in range(0, numpass):
         # rolling median in this data span with the kernel size
 
-        flux_i['flux_i_sm'] = flux_i.flux.rolling(nptsmooth, center=True).median()
+        #flux_i['flux_i_sm'] = flux_i.flux.rolling(nptsmooth, center=True).median()
+        flux_i['flux_i_sm'] = rolling_median(flux_i.flux, nptsmooth, center=True)
         #indx = np.isfinite(flux_i_sm)
         flux_i = flux_i.dropna(how='any')
         
