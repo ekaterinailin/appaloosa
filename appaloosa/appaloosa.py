@@ -1112,7 +1112,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 
         # inject flare in to light curve
         new_flux = new_flux + fl_flux
-        print('NEWFLUX: ',new_flux)
+
     '''
     Re-run flare finding for data + fake flares
     Figure out: which flares were recovered?
@@ -1124,6 +1124,8 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     rec_fake = np.zeros(nfake)
     ed_rec = np.zeros(nfake)
     ed_rec_err = np.zeros(nfake)
+    istart_rec = np.zeros(nfake)
+    istop_rec = np.zeros(nfake)
     if len(istart)>0: # in case no flares are recovered, even after injection
         for k in range(nfake): # go thru all recovered flares
             # do any injected flares overlap recovered flares?
@@ -1133,7 +1135,9 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
             if (len(rec[0]) > 0):
                 rec_fake[k] = 1
                 ed_rec[k], ed_rec_err[k], _ = ED(istart[rec[0]],istop[rec[0]],time,flux_model,new_flux, error)
-
+                istart_rec[k], istop_rec[k] = istart[rec[0]],istop[rec[0]]
+                istart = np.delete(istart,rec[0])
+                istop = np.delete(istop,rec[0])
     nbins = nfake//10
     if nbins < 10:
          nbins = 10
@@ -1204,7 +1208,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
         h5store(outfile,dfout,**metadata)
 
     #centers of bins, fraction of recovered fake flares per bin, EDs of generated fake flares, 
-    return ed_fake, rec_fake, ed_rec#, ed_rec_err
+    return ed_fake, rec_fake, ed_rec, ed_rec_err, istart_rec, istop_rec
 
 
 # objectid = '9726699'  # GJ 1243
@@ -1333,22 +1337,24 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 tmp1 = df2t.time[df1t.istart]
                 tmp2 = df2t.time[df1t.istop]
                 _ = pd.DataFrame()
-                _['ed_fake'], _['rec_fake'], ed_rec = FakeFlares(df2t.time,df2t.flux_gap/medflux - 1.0,
+                _['ed_fake'], _['rec_fake'], ed_rec, ed_rec_err, istart_rec, istop_rec = FakeFlares(df2t.time,df2t.flux_gap/medflux - 1.0,
                                                          df2t.error/medflux, df2t.lcflag, tmp1, tmp2,
                                                          savefile=True, verboseout=verbosefake,
                                                          gapwindow=gapwindow, outfile=outfile + '_fake.h5',
                                                          display=display, nfake=nfake, debug=debug)
                 
 
-                _['ed_rec'] = 0
+                _['ed_rec'], _['ed_rec_err'], _['istart_rec'], _['istop_rec'] = 0, 0, 0, 0
                 _.ed_rec[_.rec_fake == 1] = ed_rec
-                print(_)
+                _.ed_rec_err[_.rec_fake == 1] = ed_rec_err
+                _.istart_rec[_.rec_fake == 1] = istart_rec
+                _.istop_rec[_.rec_fake == 1] = istop_rec
                 _ = _.dropna(how='any') 
                 dffake = dffake.append(_, ignore_index=True)
-        dffake.to_csv('{}_all_fakes.csv'.format(outfile))      
+        dffake.to_csv('{}_all_fakes.csv'.format(outfile))
+        allfakes = pd.DataFrame(dffake)
         bins = np.linspace(0, dffake.ed_fake.max() + 1, nfake * iterations // 20)
         binmids = np.concatenate(([0],(bins[1:]+bins[:-1])/2))
-        
         frac_recovered = dffake.rec_fake.groupby(np.digitize(dffake.ed_rec, bins)).mean()
         frac_recovered[0] = 0 #add a zero intercept for aesthetics
         frac_recovered.sort_index(inplace=True) #helps plotting
@@ -1514,7 +1520,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                             'dur':durat, 'ed':ed, 'ederr': ederr})
         df1.to_csv(objectid + '_flux.csv')
         df2.to_csv(objectid + '_flares.csv')
-    return
+    return allfakes
 
 #Use h5 to store metadata and data such that it is easy to propagate, 
 #found here: https://stackoverflow.com/a/29130146
