@@ -1359,10 +1359,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         frac_recovered[0] = 0 #add a zero intercept for aesthetics
         frac_recovered.sort_index(inplace=True) #helps plotting
         binmids = np.concatenate(([0],(bins[1:]+bins[:-1])/2)) #add a zero intercept for aesthetics
-
-        dffake = pd.DataFrame({'ed_bins': binmids[frac_recovered.index.values],
-                               'frac_recovered': frac_recovered,
-                               'frac_rec_sm': wiener(frac_recovered,3)})
+       #print(binmids,frac_recovered)
+        dffake = pd.DataFrame({'ed_bins': binmids[frac_recovered.index.values[:-1]],
+                               'frac_recovered': frac_recovered.iloc[:-1],
+                               'frac_rec_sm': wiener(frac_recovered.iloc[:-1],3)})
         
         # use frac_rec_sm completeness curve to estimate 68%/90% complete
         ed68_i, ed90_i = ed6890(dffake.ed_bins,dffake.frac_rec_sm)

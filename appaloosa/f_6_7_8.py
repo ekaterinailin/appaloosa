@@ -305,7 +305,7 @@ def Kp_to_Lum(df, dm, Kp='Kp'):
     #print(df.head())
     return
 
-def Mbol_to_Lum(Mbol):
+def Mbol_to_Lum(Mbol, errMbol=pd.Series(), err=False):
     
     '''
     Returns:
@@ -315,8 +315,10 @@ def Mbol_to_Lum(Mbol):
     
     Lum_Sun = 3.84e33 #erg/s
     Mbol_Sun = 4.74 #mag
-    return Lum_Sun * 10**( Mbol_Sun - Mbol )
-
+    if err==False:
+        return Lum_Sun * 10**( Mbol_Sun - Mbol )
+    elif err==True:
+        return Lum_Sun * 10**( Mbol_Sun - Mbol ) * np.log(10) * errMbol
 
 def merged_spec_class(params):
     p = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
@@ -331,7 +333,9 @@ def merged_spec_class(params):
               'J-H':('J','H'),
               'H-K':('H','K'),}
     p['T_err'] = Terr(p['T'])
-    p['R_Rsun_err'] =0.2*p.R_Rsun
+    p['R_Rsun_err'] = 0.2*p.R_Rsun
+    dif = p.Mbol.diff().fillna(method='bfill').fillna(method='ffill').rolling(2).max()/2.
+    p['Mbol_err'] = dif.fillna(method='bfill')
     for col in p.columns.values:
         params[col]=np.nan
     for i, s in params.iterrows():
