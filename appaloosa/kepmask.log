@@ -1,0 +1,16 @@
+--------------------------------------------------------------
+KEPMASK --  infile=stars_shortlist/M67/ktwo211410963-c05_lpd-targ.fits.gz maskfile=maskfile.txt plotfile=kepmask.png frameno=100 imin=None imax=None iscale=linear cmap=bone verbose=False logfile=kepmask.log
+
+ERROR -- KEPIO.OPENFITS: cannot open stars_shortlist/M67/ktwo211410963-c05_lpd-targ.fits.gz as a FITS file
+--------------------------------------------------------------
+KEPMASK --  infile=stars_shortlist/M67/hlsp_everest_k2_llc_211410963-c05_kepler_v2.0_lc.fits maskfile=maskfile.txt plotfile=kepmask.png frameno=100 imin=None imax=None iscale=linear cmap=bone verbose=False logfile=kepmask.log
+
+ERROR -- KEPIO.OPENFITS: cannot open stars_shortlist/M67/hlsp_everest_k2_llc_211410963-c05_kepler_v2.0_lc.fits as a FITS file
+--------------------------------------------------------------
+KEPMASK --  infile=stars_shortlist/M67/hlsp_everest_k2_llc_211410963-c05_kepler_v2.0_lc.fits maskfile=maskfile.txt plotfile=kepmask.png frameno=100 imin=None imax=None iscale=linear cmap=bone verbose=False logfile=kepmask.log
+
+ERROR -- KEPIO.OPENFITS: cannot open stars_shortlist/M67/hlsp_everest_k2_llc_211410963-c05_kepler_v2.0_lc.fits as a FITS file
+--------------------------------------------------------------
+KEPMASK --  infile=stars_shortlist/M67/ktwo211410963-c05_lpd-targ.fits.gz maskfile=maskfile.txt plotfile=kepmask.png frameno=100 imin=None imax=None iscale=linear cmap=bone verbose=False logfile=kepmask.log
+
+ERROR -- KEPIO.OPENFITS: cannot open stars_shortlist/M67/ktwo211410963-c05_lpd-targ.fits.gz as a FITS file
