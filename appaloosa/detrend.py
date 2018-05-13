@@ -68,17 +68,19 @@ def GapFlat(time, flux, order=3, maxgap=0.125):
 
     flux_flat = np.array(flux, copy=True)
 
-    for i in range(0, len(dl)):
-        krnl = int(float(dl[i]-dr[i]) / 100.0)
+    for l, r in zip(dl, dr):
+        krnl = int(float(l-r) / 100.0)
 
         if (krnl < 10):
-            krnl = 10
+            #krnl = 10
+            dl = np.delete(dl,np.where(dl==l))
+            dr = np.delete(dr,np.where(dr==r))
         #flux_sm = np.array(pd.Series(flux).iloc[dl[i]:dr[i]].rolling(krnl).median())
-
-        flux_sm = rolling_median(flux[dl[i]:dr[i]], krnl)
-        indx = np.isfinite(flux_sm)
-        fit = np.polyfit(time[dl[i]:dr[i]][indx], flux_sm[indx], order)
-        flux_flat[dl[i]:dr[i]] = flux[dl[i]:dr[i]] - np.polyval(fit, time[dl[i]:dr[i]]) + tot_med
+        else:
+            flux_sm = rolling_median(flux[l:r], krnl)
+            indx = np.isfinite(flux_sm)
+            fit = np.polyfit(time[l:r][indx], flux_sm[indx], order)
+            flux_flat[l:r] = flux[l:r] - np.polyval(fit, time[l:r]) + tot_med
 
     return flux_flat
 
@@ -107,8 +109,8 @@ def QtrFlat(time, flux, qtr, order=3):
         # find all epochs within each Qtr, but careful w/ floats
         df = df[np.abs(df.qtr-q) < 0.1]
         krnl = int(float(df.shape[0]) / 100.0)
-        if (krnl < 10):
-            krnl = 10
+        #if (krnl < 10):
+           #krnl = 10
 
         df['flux_sm'] = rolling_median(np.array(df.flux, dtype='float'), krnl)
 
@@ -122,7 +124,7 @@ def QtrFlat(time, flux, qtr, order=3):
 
 
 
-def FindGaps(time, maxgap=0.125, minspan=2.0):
+def FindGaps(time, maxgap=0.125, minspan=11.0):
     '''
 
     Parameters
@@ -144,11 +146,12 @@ def FindGaps(time, maxgap=0.125, minspan=2.0):
     left = np.append(0, gap + 1) # left start of data
 
     # remove gaps that are too close together
-
-    # ok = np.where((time[right]-time[left] >= minspan))[0]
-    # bad = np.where((time[right]-time[left] < minspan))[0]
-    # for k in range(1,len(bad)-1):
-        # for each bad span of data, figure out if it can be tacked on
+    ok = np.where((time[right-1]-time[left] >= minspan))[0]
+    bad = np.where((time[right-1]-time[left] < minspan))[0]
+#    for k in range(1,len(bad)-1):
+#        for each bad span of data, figure out if it can be tacked on
+    left = left[ok]
+    right = right[ok]
     return gap_out, left, right
 
 
@@ -350,7 +353,7 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
     error_i = error
     indx_i = np.arange(len(time)) # for tracking final indx used
     exptime = np.nanmedian(time_i[1:]-time_i[:-1])
-
+ 
     nptsmooth = int(kernel/24.0 / exptime)
 
     if (nptsmooth < 4):
@@ -367,7 +370,7 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
         flux_i['flux_i_sm'] = rolling_median(flux_i.flux, nptsmooth, center=True)
         #indx = np.isfinite(flux_i_sm)
         flux_i = flux_i.dropna(how='any')
-        
+    
         if (flux_i.shape[0] > 1):
             #diff_k = (flux_i[indx] - flux_i_sm[indx])
             flux_i['diff_k'] = flux_i.flux-flux_i.flux_i_sm
@@ -384,7 +387,7 @@ def MultiBoxcar(time, flux, error, numpass=3, kernel=2.0,
             if debug is True:
                 print('k = '+str(k))
                 print('number of accepted points: '+str(len(ok[0])))
-    
+            
             #time_i = time_i[indx][ok]
             #flux_i = flux_i[indx][ok]
             #error_i = error_i[indx][ok]

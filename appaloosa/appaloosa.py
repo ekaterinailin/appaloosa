@@ -907,6 +907,7 @@ def MultiFind(time, flux, error, flags, mode=5,
 
     if (mode == 5):
         # just use the multi-pass boxcar and average. Simple. Too simple...
+        
         box3 = detrend.MultiBoxcar(time, flux, error, kernel=2.0, sigclip=3)
         t = np.array(time)
         dt = np.nanmedian(t[1:] - t[0:-1])
@@ -1312,10 +1313,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     ### Basic flattening
     # flatten quarters with polymonial
     flux_qtr = detrend.QtrFlat(time, flux_raw, qtr)
-
+    print(flux_qtr)
     # then flatten between gaps
     flux_gap = detrend.GapFlat(time, flux_qtr, maxgap=maxgap)
-
+    print(flux_gap)
     _, dl, dr = detrend.FindGaps(time, maxgap=maxgap)
     if debug is True:
         print("dl")
@@ -1391,6 +1392,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         binmids = np.concatenate(([0],(bins[1:]+bins[:-1])/2)) #add a zero intercept for aesthetics
 
         try:
+            print(frac_recovered.iloc[:-1])
             dffake = pd.DataFrame({'ed_bins': binmids[frac_recovered.index.values[:-1]],
                                'frac_recovered': frac_recovered.iloc[:-1],
                                'frac_rec_sm': wiener(frac_recovered.iloc[:-1],3)})
