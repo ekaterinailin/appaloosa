@@ -46,12 +46,12 @@ def find_nearest(array,value):
     else:
         return array[idx], idx
 
-def fakedf(EPIC,C,cluster,run,mode='numcorr'):
+def fakedf(EPIC,C,cluster,run,LCtype,mode='numcorr'):
     loc = '/home/ekaterina/Documents/appaloosa/stars_shortlist/'
-    #fakes = pd.read_csv('{}fakes/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc,EPIC,C),
-     #          usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
-    fakes = pd.read_csv('{}{}/results/{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, cluster, run, EPIC, C),
+    fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc,run,LCtype,EPIC,C),
                usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
+#    fakes = pd.read_csv('{}{}/results/{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, cluster, run, EPIC, C),
+#               usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
     bins = np.power(10,np.arange(-2,5,0.15))
     fakes['ed_ratio']=fakes.ed_rec/fakes.ed_fake
     m = pd.DataFrame()
@@ -81,11 +81,11 @@ def fakedf(EPIC,C,cluster,run,mode='numcorr'):
     return m
 
 
-def fakescorr(flares, EPIC, C, cluster, test):
+def fakescorr(flares, EPIC, C, cluster, test, LCtype):
     
-    m = fakedf(EPIC,C,cluster,test,mode='numcorr')
-    n = fakedf(EPIC,C,cluster,test,mode='EDcorr')
-    p = fakedf(EPIC,C,cluster,test,mode='falsepos')
+    m = fakedf(EPIC,C,cluster,test,LCtype,mode='numcorr')
+    n = fakedf(EPIC,C,cluster,test,LCtype,mode='EDcorr')
+    p = fakedf(EPIC,C,cluster,test,LCtype,mode='falsepos')
     #m.plot('mean_ed_fake','mean_rec_fake',yerr='std_rec_fake',
 #            xlim=(0,10000),ylim=(0,1.1),figsize=(8,4),label='recovery rate',loglog=True)
 

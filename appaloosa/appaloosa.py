@@ -828,7 +828,7 @@ def FlarePer(time, minper=0.1, maxper=30.0, nper=20000):
     return pk, pp
 
 
-def MultiFind(time, flux, error, flags, mode=1,
+def MultiFind(time, flux, error, flags, mode=5,
               gapwindow=0.1, minsep=3, debug=False):
     '''
     this needs to be either
@@ -843,9 +843,9 @@ def MultiFind(time, flux, error, flags, mode=1,
 
     if (mode == 1):
         # just use the multi-pass boxcar and average. Simple. Too simple...
-        flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=0.1)
-        flux_model2 = detrend.MultiBoxcar(time, flux, error, kernel=1.0)
-        flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=10.0)
+        flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=0.1, sigclip=3)
+        flux_model2 = detrend.MultiBoxcar(time, flux, error, kernel=1.0, sigclip=3)
+        flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=10.0, sigclip=3)
 
         flux_model = (flux_model1 + flux_model2 + flux_model3) / 3.
         flux_diff = flux - flux_model
@@ -891,9 +891,17 @@ def MultiFind(time, flux, error, flags, mode=1,
         flux_model = savgol_filter(flux, Nsmo, 2, mode='nearest')
         flux_diff = flux - flux_model
 
-    if (mode==5):
-        flux_diff = np.array(flux)
-        flux_model = np.array(flux)
+    if (mode == 5):
+        # just use the multi-pass boxcar and average. Simple. Too simple...
+        box3 = detrend.MultiBoxcar(time, flux, error, kernel=2.0, sigclip=3)
+        t = np.array(time)
+        dt = np.nanmedian(t[1:] - t[0:-1])
+        exptime_m = (np.nanmax(time) - np.nanmin(time)) / len(time)
+        # ksep used to = 0.07...
+        flux_model = detrend.IRLSSpline(time, box3, error, numpass=20, debug=debug, ksep=exptime_m*10.)
+
+        flux_diff = flux - flux_model
+        
         
     # run final flare-find on DATA - MODEL
     isflare = FINDflare(flux_diff, error, N1=3, N2=2,N3=3,
@@ -1058,7 +1066,7 @@ def FakeFlaresDist(std, nfake, ampl=(5e-1,5e2), dur=(5e-1,2e2),
 def FakeFlares(time, flux, error, flags, tstart, tstop,
                nfake=10, npass=1, ampl=(0.1,100), dur=(0.5,60),
                outfile='', savefile=False, gapwindow=0.1,
-               verboseout=False, display=False, debug=False):
+               verboseout=False, display=False, debug=False, mode=3):
     '''
     Create nfake number of events, inject them in to data
     Use grid of amplitudes and durations, keep ampl in relative flux units
@@ -1119,7 +1127,8 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
     '''
 
     # all the hard decision making should go here
-    istart, istop, flux_model = MultiFind(time, new_flux, error, flags, gapwindow=gapwindow, debug=debug)
+    istart, istop, flux_model = MultiFind(time, new_flux, error, flags, 
+                                          gapwindow=gapwindow, debug=debug, mode=mode)
 
     rec_fake = np.zeros(nfake)
     ed_rec = np.zeros(nfake)
@@ -1216,7 +1225,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
           display=False, readfile=False, debug=False, dofake=False,
           dbmode='fits', gapwindow=0.1, maxgap=0.125, 
           verbosefake=True, nfake=20, iterations=5, respath='',
-          writeout=True):
+          writeout=True, mode=3):
     '''
     Main wrapper to obtain and process a light curve
     '''
@@ -1305,7 +1314,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
         istart_i, istop_i, flux_model_i = MultiFind(time[dl[i]:dr[i]], flux_gap[dl[i]:dr[i]],
                                                     error[dl[i]:dr[i]], lcflag[dl[i]:dr[i]],
-                                                    gapwindow=gapwindow, debug=debug)
+                                                    gapwindow=gapwindow, debug=debug, mode=mode)
         chi2 = chisq(flux_gap[dl[i]:dr[i]], flux_model_i, error[dl[i]:dr[i]])
 #[dl[i]:dr[i]]
         istart = np.array(np.append(istart, istart_i + dl[i]), dtype='int')
@@ -1341,7 +1350,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                                                          df2t.error/medflux, df2t.lcflag, tmp1, tmp2,
                                                          savefile=True, verboseout=verbosefake,
                                                          gapwindow=gapwindow, outfile=outfile + '_fake.h5',
-                                                         display=display, nfake=nfake, debug=debug)
+                                                         display=display, nfake=nfake, debug=debug, mode=mode)
                 
 
                 _['ed_rec'], _['ed_rec_err'], _['istart_rec'], _['istop_rec'] = 0, 0, 0, 0
@@ -1493,7 +1502,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         ed.append(stats_i[-2])
         ederr.append(stats_i[-1])
         ampl.append(stats_i[3])
-        _ = [[item] for item in [*stats_i,df1.ed68.iloc[i],df1.ed90.iloc[i]]]
+        stats_i = np.append(stats_i,[df1.ed68.iloc[i],df1.ed90.iloc[i]])
+        _ = [[item] for item in stats_i]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,_))),
                              ignore_index=True)
     if not dfout.empty:
