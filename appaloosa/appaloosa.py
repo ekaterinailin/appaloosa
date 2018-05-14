@@ -174,7 +174,7 @@ def GetLCdb(objectid, type='', readfile=False,
 
 
 
-def Get(mode, file, objectid, win_size=3):
+def Get(mode, file, objectid, win_size=30):
     
     '''
     
@@ -291,7 +291,8 @@ def Get(mode, file, objectid, win_size=3):
         #lc.error.iloc[0] =lc.error.iloc[1]
         #lc.error.iloc[-1] =lc.error.iloc[-2]
 
-        lc['error'] = np.ones_like(lc.time) * np.nanmedian(rolling_std(lc.flux_raw, win_size, center=True))
+        #lc['error'] = np.ones_like(lc.time) * np.nanmedian(rolling_std(lc.flux_raw, win_size, center=True)) 
+        lc['error'] = rolling_std(lc.flux_raw, win_size, center=True).fillna(method='backfill').fillna(method='ffill')
 
     return GetOutfile(mode, file), GetObjectID(mode, file), np.array(lc.qtr), np.array(lc.time), np.array(lc.quality), np.array(lc.exptime), np.array(lc.flux_raw), np.array(lc.error)
         
@@ -378,8 +379,8 @@ def GetLCk2sc(file):
     data_rec = hdu[1].data
 
     lc = pd.DataFrame({'time':np.array(data_rec['time']).byteswap().newbyteorder(),
-                      'flux_raw':np.array(data_rec['flux']).byteswap().newbyteorder(),
-                      'error':np.array(data_rec['error']).byteswap().newbyteorder(),})
+                      'flux_raw':np.array(data_rec['flux']).byteswap().newbyteorder(),})
+                      #'error':np.array(data_rec['error']).byteswap().newbyteorder(),})
 
     #keep the outliers... for now
     #lc['quality'] = data_rec['OUTLIER'].byteswap().newbyteorder()
@@ -858,11 +859,12 @@ def MultiFind(time, flux, error, flags, mode=5,
 
     if (mode == 1):
         # just use the multi-pass boxcar and average. Simple. Too simple...
-        flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=0.1, sigclip=3)
-        flux_model2 = detrend.MultiBoxcar(time, flux, error, kernel=1.0, sigclip=3)
-        flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=10.0, sigclip=3)
-
-        flux_model = (flux_model1 + flux_model2 + flux_model3) / 3.
+        #flux_model0 = detrend.MultiBoxcar(time, flux, error, kernel=0.1, sigclip=3)
+        #flux_model1 = detrend.MultiBoxcar(time, flux, error, kernel=1., sigclip=3)
+        #flux_model2 = detrend.MultiBoxcar(time, flux, error, kernel=10, sigclip=3)
+        #flux_model3 = detrend.MultiBoxcar(time, flux, error, kernel=100.0, sigclip=3)
+        flux_model = np.nanmedian(flux) * np.ones_like(flux)
+        #flux_model = (flux_model1 + flux_model2 + flux_model3) / 3.
         flux_diff = flux - flux_model
 
     if (mode == 2):
@@ -920,7 +922,7 @@ def MultiFind(time, flux, error, flags, mode=5,
 
         
     # run final flare-find on DATA - MODEL
-    isflare = FINDflare(flux_diff, error, N1=3, N2=2, N3=3,
+    isflare = FINDflare(flux_diff, error, N1=3, N2=4, N3=3,
                         returnbinary=True, avg_std=True)
 
     
@@ -1313,10 +1315,10 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
     ### Basic flattening
     # flatten quarters with polymonial
     flux_qtr = detrend.QtrFlat(time, flux_raw, qtr)
-    print(flux_qtr)
+
     # then flatten between gaps
     flux_gap = detrend.GapFlat(time, flux_qtr, maxgap=maxgap)
-    print(flux_gap)
+    
     _, dl, dr = detrend.FindGaps(time, maxgap=maxgap)
     if debug is True:
         print("dl")
@@ -1464,7 +1466,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
         plt.plot(time, flux_model, 'blue', lw=3, alpha=0.7)
 
-
+        plt.plot(time, flux_model+error,'green')
+        plt.plot(time, flux_model-error,'green')
         plt.xlabel('Time (BJD - 2454833 days)')
         plt.ylabel(r'Flux (e- sec$^{-1}$)')
 

@@ -48,10 +48,12 @@ def find_nearest(array,value):
 
 def fakedf(EPIC,C,cluster,run,LCtype,mode='numcorr'):
     loc = '/home/ekaterina/Documents/appaloosa/stars_shortlist/'
-    fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc,run,LCtype,EPIC,C),
+    if LCtype=='everest':
+        fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, run, LCtype, EPIC, C),
                usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
-#    fakes = pd.read_csv('{}{}/results/{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, cluster, run, EPIC, C),
-#               usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
+    elif LCtype == 'k2sc':
+        fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2_lc.fits_all_fakes.csv'.format(loc, run, LCtype, EPIC, C),
+               usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
     bins = np.power(10,np.arange(-2,5,0.15))
     fakes['ed_ratio']=fakes.ed_rec/fakes.ed_fake
     m = pd.DataFrame()
