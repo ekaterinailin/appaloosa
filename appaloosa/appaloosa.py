@@ -1234,7 +1234,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
                 dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
         else:
             dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
-        h5store(outfile,dfout,**metadata)
+       # h5store(outfile,dfout,**metadata)
 
     #centers of bins, fraction of recovered fake flares per bin, EDs of generated fake flares, 
 
@@ -1542,8 +1542,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         stats_i = [[item] for item in stats_i]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,stats_i))),
                              ignore_index=True)
-    if not dfout.empty:
-        h5store(outfile + '_flare.h5',dfout,**metadata)
+    #if not dfout.empty:
+      #  h5store(outfile + '_flare.h5',dfout,**metadata)
     
 
 
@@ -1571,7 +1571,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         dfout = dfout.append(pd.DataFrame(dict(zip(header,stats_i))),
                              ignore_index=True)
         
-    h5store(outfile + '_flare.h5',dfout,**metadata)
+   # h5store(outfile + '_flare.h5',dfout,**metadata)
     return allfakes
 
 
