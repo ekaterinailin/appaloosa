@@ -61,7 +61,7 @@ def CMD(specs,cluster,cid1='gmag',cid2='imag',color='g_i',ylim=(19,5),outliers=p
     plot.set_ylabel(cid1[0])
     plot.set_xlabel('{}-{}'.format(cid1[0],cid2[0]))
     fig = plot.get_figure()
-    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color),dpi=300)
+    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color), dpi=300)
     return
 
 def readable(string):
@@ -179,7 +179,9 @@ def spectrum(T, lib, wavmin=3480., wavmax=9700.):
         print('T= ',T)
         Tmin = str(T-100.)
         Tmax = str(T+100.)
-        cut = lib.library_params.query(Tmin+'<Teff<'+Tmax)
+        Rmin = str(R-0.2)
+        Rmax = str(R+0.2)
+        cut = lib.library_params.query(Rmin + '< radius < ' + Rmax + ' and' + Tmin + ' < Teff < ' + Tmax)
         #print('cut\n',cut.head())
         T_offer = zip(list(cut['Teff']), list(cut['lib_index']))
         T_minindex = min(T_offer, key = lambda t: abs(t[0]-T))[1]
