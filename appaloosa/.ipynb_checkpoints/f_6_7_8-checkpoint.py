@@ -44,10 +44,10 @@ def spec_class_hist(specs,cluster,sort):
 
     counts = specs.spec_class.value_counts(sort=False)
     y = counts.sort_index()
-    plot = y.plot(kind = 'bar',color='blue')
+    plot = y.plot(kind = 'bar',color='blue',ylim=(0,210))#,xlim=('F4','M5.5'))
     fig = plot.get_figure()
     fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/clean_CMD_{}.jpg'.format(cluster),dpi=300)
-    return
+    return y
 
 def CMD(specs,cluster,cid1='gmag',cid2='imag',color='g_i',ylim=(19,5),outliers=pd.Series()):
     '''
@@ -61,7 +61,7 @@ def CMD(specs,cluster,cid1='gmag',cid2='imag',color='g_i',ylim=(19,5),outliers=p
     plot.set_ylabel(cid1[0])
     plot.set_xlabel('{}-{}'.format(cid1[0],cid2[0]))
     fig = plot.get_figure()
-    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color),dpi=300)
+    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color), dpi=300)
     return
 
 def readable(string):
@@ -157,7 +157,7 @@ def interpolate_nan(y):
 
 #End: Solution to nan_bug
 
-def spectrum(T, lib, wavmin=3480., wavmax=9700.):
+def spectrum(T, R, lib, wavmin=3480., wavmax=9700.):
     
     '''
     
@@ -179,7 +179,9 @@ def spectrum(T, lib, wavmin=3480., wavmax=9700.):
         print('T= ',T)
         Tmin = str(T-100.)
         Tmax = str(T+100.)
-        cut = lib.library_params.query(Tmin+'<Teff<'+Tmax)
+        Rmin = str(R-0.2)
+        Rmax = str(R+0.2)
+        cut = lib.library_params.query(Rmin + '< radius < ' + Rmax + ' and' + Tmin + ' < Teff < ' + Tmax)
         #print('cut\n',cut.head())
         T_offer = zip(list(cut['Teff']), list(cut['lib_index']))
         T_minindex = min(T_offer, key = lambda t: abs(t[0]-T))[1]
@@ -188,7 +190,7 @@ def spectrum(T, lib, wavmin=3480., wavmax=9700.):
         spec = lib.library_spectra[cut.lib_index,0,:]
         return lib.wav, spec.T
 
-def kepler_spectrum(T,lib,deriv=False):
+def kepler_spectrum(T, R, lib,deriv=False):
     '''
     
     Convolves a blackbody of effective temperature T, 
@@ -214,7 +216,7 @@ def kepler_spectrum(T,lib,deriv=False):
                                   names=['wav','resp'])
     Kp.wav = Kp.wav.astype(np.float)*10. #convert to angström for spectrum function
     #load the spectrum within a wavelength range that fits given T_eff best
-    Spec_wav, Spec_flux = spectrum(T,lib,Kp.wav.min(),Kp.wav.max())
+    Spec_wav, Spec_flux = spectrum(T, R, lib,Kp.wav.min(),Kp.wav.max())
     #map Kepler response linearly into wavelengths given with the spectrum
     if Spec_flux == []:
         print('{}K is too hot or too cool for specmatch-emp.'.format(T))
@@ -243,9 +245,9 @@ def kepler_spectrum(T,lib,deriv=False):
         
         return Kp_midwav, Kp_flux, planck
 
-def plot_kepler_spectrum(T):
+def plot_kepler_spectrum(T,R):
 
-    wav, flux, planck = kepler_spectrum(T,lib)
+    wav, flux, planck = kepler_spectrum(T,R,lib)
     
     Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
                                   skiprows=9,
@@ -263,7 +265,7 @@ def plot_kepler_spectrum(T):
         plt.show()  
     return
 
-def kepler_luminosity(T,lib, error=False):
+def kepler_luminosity(T,R,lib, error=False):
     
     '''
     Integrates the Kepler flux,
@@ -280,9 +282,9 @@ def kepler_luminosity(T,lib, error=False):
     
     #calculate Kepler spectrum of a dwarf star with temperature T
     if error==False:
-        wav, flux, _ = kepler_spectrum(T,lib)
+        wav, flux, _ = kepler_spectrum(T,R,lib)
     elif error==True:
-        wav, flux, _ = kepler_spectrum(T,lib,deriv=True)
+        wav, flux, _ = kepler_spectrum(T,R,lib,deriv=True)
         
     if flux == []:
         return print('{}K is too hot or too cold'.format(T))
@@ -352,7 +354,7 @@ def L_quieterr(L, R, Rerr, T, Terr,lib):
     R*=6.96342e10 #stellar radius in cm
     Rerr*=6.96342e10 #stellar radius error in cm
     t1 = np.abs(L/R)
-    deriv_L = kepler_luminosity(T, lib, error=True)
+    deriv_L = kepler_luminosity(T, R, lib, error=True)
     t2 = np.abs(deriv_L)
     #print(t1,t2)
     return (t1 * Rerr)+ (t2 * Terr)

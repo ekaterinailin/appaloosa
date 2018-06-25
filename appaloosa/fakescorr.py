@@ -58,6 +58,7 @@ def fakedf(EPIC,C,cluster,run,LCtype,mode='numcorr'):
     fakes['ed_ratio']=fakes.ed_rec/fakes.ed_fake
     m = pd.DataFrame()
     if mode=='numcorr':
+        fakes = fakes[fakes.ed_ratio < 1.1]
         fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 20000]
         fakes['range1'], bins = pd.cut(fakes.ed_fake, bins, retbins=True,include_lowest=True)
         m['mean_ed_fake'] = fakes.groupby('range1').ed_fake.mean()
