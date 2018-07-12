@@ -16,7 +16,7 @@ def write_flares(forf,cluster, test, EPIC, typ='flares'):
     ------------
     '''
     
-    loc = '/home/ekaterina/Documents/appaloosa/stars_shortlist/{}/results/{}'.format(cluster,test)
+    loc = 'stars_shortlist/{}/results/{}'.format(cluster,test)
     if typ == 'flares':
         forf.to_csv('{}/{}_flares.csv'.format(loc,EPIC))
     elif typ == 'flux':
@@ -40,40 +40,42 @@ def find_nearest(array,value):
     
     '''
 
-    idx = np.searchsorted(array, value, side="left")
+    idx = np.searchsorted(array, value, side="right")
     if idx > 0 and (idx == len(array) or math.fabs(value - array[idx-1]) < math.fabs(value - array[idx])):
         return array[idx-1], idx-1
     else:
         return array[idx], idx
 
 def fakedf(EPIC,C,cluster,run,LCtype,mode='numcorr'):
-    loc = '/home/ekaterina/Documents/appaloosa/stars_shortlist/'
+    loc = '/home/eilin/research/k2_cluster_flares/aprun/k2sc_05'
     if LCtype=='everest':
-        fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, run, LCtype, EPIC, C),
+        fakes = pd.read_csv('{}/{}-c{}_kepler_v2.0_lc.fits_all_fakes.csv'.format(loc, LCtype, EPIC, C),
                usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
     elif LCtype == 'k2sc':
-        fakes = pd.read_csv('{}fakes/{}_{}/{}-c{}_kepler_v2_lc.fits_all_fakes.csv'.format(loc, run, LCtype, EPIC, C),
+        fakes = pd.read_csv('{}/{}-c{}_kepler_v2_lc.fits_all_fakes.csv'.format(loc, EPIC, C),
                usecols=['ed_fake', 'rec_fake', 'ed_rec', 'ed_rec_err', 'istart_rec', 'istop_rec'])
-    bins = np.power(10,np.arange(-2,5,0.15))
+    bins = np.power(10,np.arange(-2,6,0.015))
     fakes['ed_ratio']=fakes.ed_rec/fakes.ed_fake
     m = pd.DataFrame()
     if mode=='numcorr':
-        fakes = fakes[fakes.ed_ratio < 1.1]
-        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 20000]
+
+        fakes = fakes.sort_values(by='ed_fake')[(fakes.ed_fake < 1e6) & (fakes.ed_ratio < 1.2)]
         fakes['range1'], bins = pd.cut(fakes.ed_fake, bins, retbins=True,include_lowest=True)
         m['mean_ed_fake'] = fakes.groupby('range1').ed_fake.mean()
         m['mean_rec_fake'] = fakes.groupby('range1').rec_fake.mean()
         m['std_rec_fake'] = fakes.groupby('range1').rec_fake.std()
+        #m['mean_ed_fake'] = pd.rolling_mean(m.mean_ed_fake, 3)
         
     elif mode=='EDcorr':
-        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 20000]
+        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 1e6]
         fakes['range1'], bins = pd.cut(fakes.ed_rec, bins, retbins=True,include_lowest=True)
         m['mean_ed_rec'] = fakes.groupby('range1').ed_rec.mean()
         m['mean_ED_corr'] = fakes.groupby('range1').ed_ratio.mean()
         m['std_ED_corr'] = fakes.groupby('range1').ed_ratio.std()
+        #m['mean_ed_rec'] = pd.rolling_mean(m.mean_ed_rec, 3)
         
     elif mode=='falsepos':
-        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 20000]
+        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 1e6]
         fakes['range1'], bins = pd.cut(fakes.ed_rec, bins, retbins=True,include_lowest=True)
         group = fakes.groupby('range1').ed_ratio #identify false positives...
         m['mean_ed_rec'] = fakes.groupby('range1').ed_rec.mean()
@@ -111,7 +113,8 @@ def fakescorr(flares, EPIC, C, cluster, test, LCtype):
             numcorrfactor = 1./m.mean_rec_fake.iloc[id_]
             numcorr.append(numcorrfactor)
             
-            counttrue.append( (1.-falsefrac) * numcorrfactor )
+            #counttrue.append( (1.-falsefrac) * numcorrfactor )
+            counttrue.append( numcorrfactor )
     flares['corrected'] = numcorr
     flares['falsepos_corrected'] = falsepos
     flares['ED_true'] = EDcorr

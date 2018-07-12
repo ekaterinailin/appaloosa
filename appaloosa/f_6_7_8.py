@@ -46,22 +46,26 @@ def spec_class_hist(specs,cluster,sort):
     y = counts.sort_index()
     plot = y.plot(kind = 'bar',color='blue',ylim=(0,210))#,xlim=('F4','M5.5'))
     fig = plot.get_figure()
-    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/clean_CMD_{}.jpg'.format(cluster),dpi=300)
+    #fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/clean_CMD_{}.jpg'.format(cluster),dpi=300)
+    fig.savefig('stars_shortlist/share/clean_CMD_{}.jpg'.format(cluster),dpi=300)
     return y
 
-def CMD(specs,cluster,cid1='gmag',cid2='imag',color='g_i',ylim=(19,5),outliers=pd.Series()):
+def CMD(specs,cluster,cid1='gmag',cid2='imag',colour='g_i',ylim=(19,5),outliers=pd.Series()):
     '''
     Plots and saves CMDs for specified bands, 
     marks outliers if any are passed.
     '''
-    specs[color]=specs[cid1]-specs[cid2]
-    plot = specs.plot(x=color,y=cid1,ylim=ylim,kind = 'scatter', 
-                      color=color_outlier_red(specs.index.values,outliers),
+    specs[colour]=specs[cid1]-specs[cid2]
+
+    plot = specs.plot(x=colour,y=cid1,ylim=ylim,kind = 'scatter', 
+                     # colormap=color_outlier_red(specs.index.values,outliers),
                       figsize=(5,4),title=readable(cluster))
     plot.set_ylabel(cid1[0])
     plot.set_xlabel('{}-{}'.format(cid1[0],cid2[0]))
     fig = plot.get_figure()
-    fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color), dpi=300)
+    #fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color),dpi=300)
+    fig.savefig('stars_shortlist/share/CMD_{}_{}.png'.format(cluster,colour),dpi=300)
+
     return
 
 def readable(string):
@@ -79,7 +83,7 @@ def color_outlier_red(val,outliers):
         if id_ in list(outliers):
             color.append('red')
         else:
-            color.append('black')
+            color.append('k')
     #color = ['red' if val in outliers else 'black'
     return color
 
@@ -91,9 +95,10 @@ def interactive_CMD(specs,cid1='gmag',cid2='imag'):
     '/home/ekaterina/Documents/appaloosa/stars_shortlist/share/temp'
     '''
     # Create some random data and put it into a ColumnDataSource
-    x = list(specs[cid1]-specs[cid2])
-    y = list(specs[cid2])
-    z = list(specs.index.values)
+    s = specs[[cid1, cid2]].dropna(how='any')
+    x = list(s[cid1]-s[cid2])
+    y = list(s[cid2])
+    z = list(s.index.values)
     source_data = ColumnDataSource(data=dict(x=x, y=y,desc=z))
     
     # Create a button that saves the coordinates of selected data points to a file
@@ -116,7 +121,7 @@ def interactive_CMD(specs,cid1='gmag',cid2='imag'):
 
     # Plot the data and save the html file
     p = figure(plot_width=800, plot_height=400, 
-               y_range=(16,7),
+               #y_range=(20,7),
                tools="lasso_select, reset",)
     p.circle(x='x', y='y', source=source_data)
     p.xaxis.axis_label = '{}-{}'.format(cid1[0],cid2[0])
@@ -209,7 +214,8 @@ def kepler_spectrum(T, R, lib,deriv=False):
     
     
     '''
-    Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
+ #   Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
+    Kp = pd.read_csv('stars_shortlist/static/Kepler_response.txt',
                                   skiprows=9,
                                   header=None,
                                   delimiter='\t',
@@ -249,7 +255,8 @@ def plot_kepler_spectrum(T,R):
 
     wav, flux, planck = kepler_spectrum(T,R,lib)
     
-    Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
+    #Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
+    Kp = pd.read_csv('stars_shortlist/static/Kepler_response.txt',
                                   skiprows=9,
                                   header=None,
                                   delimiter='\t',
@@ -277,8 +284,9 @@ def kepler_luminosity(T,R,lib, error=False):
     total Kepler luminosity in erg/s of a dwarf star with effective temperature T
     
     '''
-    
-    params=pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
+    params=pd.read_csv('stars_shortlist/static/merged_specs.csv')
+
+  #  params=pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
     
     #calculate Kepler spectrum of a dwarf star with temperature T
     if error==False:
@@ -323,7 +331,8 @@ def Mbol_to_Lum(Mbol, errMbol=pd.Series(), err=False):
         return Lum_Sun * 10**( Mbol_Sun - Mbol ) * np.log(10) * errMbol
 
 def merged_spec_class(params):
-    p = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
+    #p = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
+    p = pd.read_csv('stars_shortlist/static/merged_specs.csv')
     colors = {'g_r':('gmag','rmag'),
               'r_i':('rmag','imag'),
               'i_z':('imag','zmag'),
@@ -336,7 +345,8 @@ def merged_spec_class(params):
               'H-K':('H','K'),}
     p['T_err'] = Terr(p['T'])
     p['R_Rsun_err'] = 0.2*p.R_Rsun
-    dif = p.Mbol.diff().fillna(method='bfill').fillna(method='ffill').rolling(2).max()/2.
+    dif = p.Mbol.diff().fillna(method='bfill').fillna(method='ffill')
+    dif = pd.rolling_max(dif,2)/2.
     p['Mbol_err'] = dif.fillna(method='bfill')
     for col in p.columns.values:
         params[col]=np.nan
@@ -360,7 +370,8 @@ def L_quieterr(L, R, Rerr, T, Terr,lib):
     return (t1 * Rerr)+ (t2 * Terr)
 
 def Terr(Tseq):
-    Terr = Tseq.rolling(window=3,center=True).std()
+    #python version problem
+    Terr = pd.rolling_std(Tseq,window=3,center=True)#.std()
     Terr = Terr.fillna(100)
     #print(Terr)
     return Terr

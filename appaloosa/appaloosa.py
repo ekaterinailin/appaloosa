@@ -1383,7 +1383,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                                                          display=display, nfake=nfake, debug=debug, mode=mode)
                 
 
-                _['ed_rec'], _['ed_rec_err'], _['istart_rec'], _['istop_rec'], _['dur_fake'], _['ampl_fake'] = 0, 0, 0, 0,0,0
+                _['ed_rec'], _['ed_rec_err'], _['istart_rec'], _['istop_rec'] = 0, 0, 0, 0
+                _['dur_fake'], _['ampl_fake'] = 0, 0
                 _.dur_fake[_.rec_fake == 1] = dur_fake
                 _.ampl_fake[_.rec_fake == 1] = ampl_fake
                 _.ed_rec[_.rec_fake == 1] = ed_rec
@@ -1550,8 +1551,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         stats_i = [[item] for item in stats_i]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,stats_i))),
                              ignore_index=True)
-   # if not dfout.empty:
-       # h5store(outfile + '_flare.h5',dfout,**metadata)
+
     
 
 
@@ -1579,7 +1579,6 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         dfout = dfout.append(pd.DataFrame(dict(zip(header,stats_i))),
                              ignore_index=True)
         
-    #h5store(outfile + '_flare.h5',dfout,**metadata)
     return allfakes
 
 

@@ -64,7 +64,7 @@ def linfit(data):
         b, theta = fmin(logL, [60,1.5],
                         args=(d.x, d.y, d.sigy, d.sigx, d.sigxy),
                         disp=0)
-        lin = b + np.tan(theta) * t
+        lin = b + np.tan(theta) * t + data.norm.iloc[0]
         plt.plot(t, lin, alpha=0.2)
         b_.append(b)
         theta_.append(theta)
