@@ -1238,7 +1238,7 @@ def FakeFlares(time, flux, error, flags, tstart, tstop,
 
     #centers of bins, fraction of recovered fake flares per bin, EDs of generated fake flares, 
 
-    return ed_fake, rec_fake, ed_rec, ed_rec_err, istart_rec, istop_rec
+    return dur_fake, ampl_fake, ed_fake, rec_fake, ed_rec, ed_rec_err, istart_rec, istop_rec
 
 
 
@@ -1370,7 +1370,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 tmp1 = df2t.time[df1t.istart]
                 tmp2 = df2t.time[df1t.istop]
                 _ = pd.DataFrame()
-                _['ed_fake'], _['rec_fake'], ed_rec, ed_rec_err, istart_rec, istop_rec = FakeFlares(df2t.time,df2t.flux_gap/medflux - 1.0,
+                dur_fake, ampl_fake, _['ed_fake'], _['rec_fake'], ed_rec, ed_rec_err, istart_rec, istop_rec = FakeFlares(df2t.time,df2t.flux_gap/medflux - 1.0,
                                                          df2t.error/medflux, df2t.lcflag, tmp1, tmp2,
                                                          savefile=True, verboseout=verbosefake,
                                                          gapwindow=gapwindow, outfile=outfile + '_fake.h5',
@@ -1378,6 +1378,9 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
                 
 
                 _['ed_rec'], _['ed_rec_err'], _['istart_rec'], _['istop_rec'] = 0, 0, 0, 0
+                _['dur_fake'], _['ampl_fake'] = 0, 0
+                _.dur_fake[_.rec_fake == 1] = dur_fake
+                _.ampl_fake[_.rec_fake == 1] = ampl_fake
                 _.ed_rec[_.rec_fake == 1] = ed_rec
                 _.ed_rec_err[_.rec_fake == 1] = ed_rec_err
                 _.istart_rec[_.rec_fake == 1] = istart_rec

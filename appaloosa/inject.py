@@ -48,13 +48,13 @@ def processInput(i,ID,C):
 
 
 os.chdir('/work1/eilin/appaloosa/appaloosa')
-clusters =[["M44","05",[]],]
+clusters =[["Pleiades","04",[]],]
 
 
 
 
 for cluster,C,fails in clusters:
-    df = pd.read_csv('{}_parameter.csv'.format(cluster))
+    df = pd.read_csv('{}_parameter_extra.csv'.format(cluster))
     os.chdir('/work1/eilin/data/CLUSTERS_01/CLUSTERS_01_{}/LC/LLC'.format(cluster))
     
     num_cores = multiprocessing.cpu_count()
@@ -62,7 +62,7 @@ for cluster,C,fails in clusters:
     Parallel(n_jobs=num_cores-1)(delayed(processInput)(i,ID,C) for (i, ID) in enumerate( list( df.EPIC ) ) )
         
     with open('{}_fails.txt'.format(cluster), 'a') as f:
-        f.write(fails)
+        f.write(str(fails))
 
 
 #('M67','05'),check,check
