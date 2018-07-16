@@ -50,7 +50,7 @@ def spec_class_hist(specs,cluster,sort):
     fig.savefig('stars_shortlist/share/clean_CMD_{}.jpg'.format(cluster),dpi=300)
     return y
 
-def CMD(specs,cluster,cid1='gmag',cid2='imag',colour='g_i',ylim=(19,5),outliers=pd.Series()):
+def CMD(specs,cluster,cid1='SDSS_g',cid2='SDSS_i',colour='g_i',ylim=(19,5),outliers=pd.Series()):
     '''
     Plots and saves CMDs for specified bands, 
     marks outliers if any are passed.
@@ -88,7 +88,7 @@ def color_outlier_red(val,outliers):
     return color
 
 
-def interactive_CMD(specs,cid1='gmag',cid2='imag'):
+def interactive_CMD(specs,cid1='SDSS_g',cid2='SDSS_i'):
     '''
     Simplistic tool to create an interactive 
     bokeh plot where outliers can be marked and saved in
@@ -333,14 +333,14 @@ def Mbol_to_Lum(Mbol, errMbol=pd.Series(), err=False):
 def merged_spec_class(params):
     #p = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
     p = pd.read_csv('stars_shortlist/static/merged_specs.csv')
-    colors = {'g_r':('gmag','rmag'),
-              'r_i':('rmag','imag'),
-              'i_z':('imag','zmag'),
-              'z_J':('zmag','J'),
+    colors = {'g_r':('SDSS_g','SDSS_r'),
+              'r_i':('SDSS_r','SDSS_i'),
+              'i_z':('SDSS_i','SDSS_z'),
+              'z_J':('SDSS_z','J'),
               'J_H':('J','H'),
               'H_K':('H','K'),
-              'i-z':('imag','zmag'),
-              'z-Y':('zmag','ymag'),
+              'i-z':('SDSS_i','SDSS_z'),
+              'z-Y':('SDSS_z','SDSS_y'),
               'J-H':('J','H'),
               'H-K':('H','K'),}
     p['T_err'] = Terr(p['T'])

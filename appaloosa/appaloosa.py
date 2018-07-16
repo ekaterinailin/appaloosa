@@ -218,7 +218,7 @@ def Get(mode, file, objectid, win_size=30):
         if mode == 'everest':
             fldr = mode
             home = expanduser("~")
-            outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
+            outdir = 'aprun/' + fldr + '/'
             if not os.path.isdir(outdir):
                 try:
                     os.makedirs(outdir)
@@ -229,7 +229,7 @@ def Get(mode, file, objectid, win_size=30):
         if mode == 'k2sc':
             fldr = mode
             home = expanduser("~")
-            outdir = home + '/research/k2_cluster_flares/aprun/' + fldr + '/'
+            outdir = 'aprun/' + fldr + '/'
             if not os.path.isdir(outdir):
                 try:
                     os.makedirs(outdir)
@@ -1491,7 +1491,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
             if sum(np.isfinite(yminmax)) > 1:
                 plt.ylim(yminmax[0], yminmax[1])
 
-        plt.savefig(file + '_lightcurve.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
+        #plt.savefig(file + '_lightcurve.pdf', dpi=300, bbox_inches='tight', pad_inches=0.5)
         plt.show()
 
     '''
@@ -1557,7 +1557,7 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
 
     if writeout is True:
         #os.chdir(str(sys.argv[1])) #go where the data are stored
-        os.chdir(respath)
+        #os.chdir(respath)
         if os.path.isfile('flarelist.txt') == False: #check if output file already exists
             with io.FileIO('flarelist.txt', 'a') as myfile: #otherwise create
                 firstline=bytes('Object ID \t Date of Run \t Number of Flares \t Filename \t Total Exposure Time of LC in Days \t BJD-2454833 days \n', 'utf-8') #write a header line
