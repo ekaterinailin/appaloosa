@@ -96,7 +96,7 @@ def fakescorr(flares, EPIC, C, cluster, test, LCtype):
 
     #flares = pd.read_csv('{}{}/results/{}/{}_flares.csv'.format(loc,cluster,test,EPIC))
 
-    numcorr, EDcorr, falsepos, counttrue = [], [], []
+    numcorr, EDcorr, falsepos, counttrue = [], [], [], []
     for ED_rec in flares.myed:
         if ED_rec == np.nan:
             numcorr.append(0)
