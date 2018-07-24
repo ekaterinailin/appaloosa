@@ -74,13 +74,13 @@ def fakedf(EPIC,C,cluster,run,LCtype,mode='numcorr'):
         m['std_ED_corr'] = fakes.groupby('range1').ed_ratio.std()
         #m['mean_ed_rec'] = pd.rolling_mean(m.mean_ed_rec, 3)
         
-    elif mode=='falsepos':
-        fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 1e6]
-        fakes['range1'], bins = pd.cut(fakes.ed_rec, bins, retbins=True,include_lowest=True)
-        group = fakes.groupby('range1').ed_ratio #identify false positives...
-        m['mean_ed_rec'] = fakes.groupby('range1').ed_rec.mean()
-        m['mean_fp_rate'] = group.apply(lambda x: x[x > 1.].shape[0]) / group.size() #...here.
-        #m['summe'] = false.groupby('range1').ed_ratio.size()
+#     elif mode=='falsepos':
+#         fakes = fakes.sort_values(by='ed_fake')[fakes.ed_fake < 1e6]
+#         fakes['range1'], bins = pd.cut(fakes.ed_rec, bins, retbins=True,include_lowest=True)
+#         group = fakes.groupby('range1').ed_ratio #identify false positives...
+#         m['mean_ed_rec'] = fakes.groupby('range1').ed_rec.mean()
+#         m['mean_fp_rate'] = group.apply(lambda x: x[x > 1.].shape[0]) / group.size() #...here.
+#         #m['summe'] = false.groupby('range1').ed_ratio.size()
         
     m = m.dropna(how='any')
     return m
@@ -90,13 +90,13 @@ def fakescorr(flares, EPIC, C, cluster, test, LCtype):
     
     m = fakedf(EPIC,C,cluster,test,LCtype,mode='numcorr')
     n = fakedf(EPIC,C,cluster,test,LCtype,mode='EDcorr')
-    p = fakedf(EPIC,C,cluster,test,LCtype,mode='falsepos')
+  #  p = fakedf(EPIC,C,cluster,test,LCtype,mode='falsepos')
     #m.plot('mean_ed_fake','mean_rec_fake',yerr='std_rec_fake',
 #            xlim=(0,10000),ylim=(0,1.1),figsize=(8,4),label='recovery rate',loglog=True)
 
     #flares = pd.read_csv('{}{}/results/{}/{}_flares.csv'.format(loc,cluster,test,EPIC))
 
-    numcorr, EDcorr, falsepos, counttrue = [], [], [], []
+    numcorr, EDcorr,  counttrue = [], [], []
     for ED_rec in flares.myed:
         if ED_rec == np.nan:
             numcorr.append(0)
@@ -105,9 +105,9 @@ def fakescorr(flares, EPIC, C, cluster, test, LCtype):
             ED_true = ED_recbinned / n.mean_ED_corr.iloc[id_]
             EDcorr.append(ED_true)
             
-            _, id_ = find_nearest(np.asarray(p.mean_ed_rec),ED_rec)
-            falsefrac = p.mean_fp_rate.iloc[id_]
-            falsepos.append(falsefrac)
+            #_, id_ = find_nearest(np.asarray(p.mean_ed_rec),ED_rec)
+            #falsefrac = p.mean_fp_rate.iloc[id_]
+            #falsepos.append(falsefrac)
             
             _, id_ = find_nearest(np.asarray(m.mean_ed_fake),ED_true)
             numcorrfactor = 1./m.mean_rec_fake.iloc[id_]
@@ -116,7 +116,7 @@ def fakescorr(flares, EPIC, C, cluster, test, LCtype):
             #counttrue.append( (1.-falsefrac) * numcorrfactor )
             counttrue.append( numcorrfactor )
     flares['corrected'] = numcorr
-    flares['falsepos_corrected'] = falsepos
+   # flares['falsepos_corrected'] = falsepos
     flares['ED_true'] = EDcorr
     flares['count_true'] = counttrue
     flares = flares.replace([np.inf, -np.inf], np.nan)
