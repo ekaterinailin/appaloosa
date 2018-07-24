@@ -34,7 +34,7 @@ def logL(X,*args):
 
     return sum(L)
 
-def linfit(data):
+def linfit(data,axis=plt):
     
     '''
     Fits a linear function to a data set with errors in x and y,
@@ -65,7 +65,7 @@ def linfit(data):
                         args=(d.x, d.y, d.sigy, d.sigx, d.sigxy),
                         disp=0)
         lin = b + np.tan(theta) * t + data.norm.iloc[0]
-        plt.plot(t, lin, alpha=0.2)
+        axis.plot(t, lin, alpha=0.2)
         b_.append(b)
         theta_.append(theta)
     
