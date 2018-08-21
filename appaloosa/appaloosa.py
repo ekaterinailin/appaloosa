@@ -1572,8 +1572,8 @@ def RunLC(file='', objectid='', ftype='sap', lctype='',
         df3 = pd.DataFrame({'time':time, 'flux_gap':flux_gap,'flux_model':flux_model,'error':error})
         df4 = pd.DataFrame({'istart':istart,'istop':istop,'ampl':ampl,
                             'dur':durat, 'ed':ed, 'ederr': ederr})
-        df3.to_csv(objectid + '_flux.csv')
-        df4.to_csv(objectid + '_flares.csv')
+        df3.to_csv(respath + objectid + '_flux.csv')
+        df4.to_csv(respath + objectid + '_flares.csv')
 
        # _ = [[item] for item in stats_i + df1.ed68.iloc[i] + df1.ed90.iloc[i]]
         dfout = dfout.append(pd.DataFrame(dict(zip(header,stats_i))),

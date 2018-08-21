@@ -1,7 +1,7 @@
 import numpy as np
 import random
 import pandas as pd
-import glob
+import glob, time
 import matplotlib.pyplot as plt
 import specmatchemp.library
 import specmatchemp.plots as smplot
@@ -15,6 +15,8 @@ from bokeh.layouts import row, column
 h*=1e7 # Planck constant in erg*s
 c*=1e2 # light speed in cm/s
 k*=1e7 # Boltzmann constant in erg/K
+
+clusterfeh = {'M67': 0.03, 'M44': 0.16, 'Pleiades': -0.01}
 
 def dprint(str,debug):
     
@@ -58,13 +60,13 @@ def CMD(specs,cluster,cid1='SDSS_g',cid2='SDSS_i',colour='g_i',ylim=(19,5),outli
     specs[colour]=specs[cid1]-specs[cid2]
 
     plot = specs.plot(x=colour,y=cid1,ylim=ylim,kind = 'scatter', 
-                     # colormap=color_outlier_red(specs.index.values,outliers),
+                   #  colormap=color_outlier_red(specs.index.values,outliers),
                       figsize=(5,4),title=readable(cluster))
-    plot.set_ylabel(cid1[0])
-    plot.set_xlabel('{}-{}'.format(cid1[0],cid2[0]))
+    plot.set_ylabel(cid1[-1])
+    plot.set_xlabel('{}-{}'.format(cid1[-1],cid2[-1]))
     fig = plot.get_figure()
     #fig.savefig('/home/ekaterina/Documents/appaloosa/stars_shortlist/share/CMD_{}_{}.jpg'.format(cluster,color),dpi=300)
-    fig.savefig('stars_shortlist/share/CMD_{}_{}.png'.format(cluster,colour),dpi=300)
+    fig.savefig('stars_shortlist/{0}/results/{1}/catalog/CMD_{0}_{2}.png'.format(cluster,test,colour),dpi=300)
 
     return
 
@@ -124,8 +126,8 @@ def interactive_CMD(specs,cid1='SDSS_g',cid2='SDSS_i'):
                #y_range=(20,7),
                tools="lasso_select, reset",)
     p.circle(x='x', y='y', source=source_data)
-    p.xaxis.axis_label = '{}-{}'.format(cid1[0],cid2[0])
-    p.yaxis.axis_label = cid1[0]
+    p.xaxis.axis_label = '{}-{}'.format(cid1,cid2)
+    p.yaxis.axis_label = cid1
     plot = column(p, savebutton)
     output_file("test.html")
     show(plot)
@@ -162,7 +164,7 @@ def interpolate_nan(y):
 
 #End: Solution to nan_bug
 
-def spectrum(T, R, lib, wavmin=3480., wavmax=9700.):
+def spectrum(cluster, T, R, lib, wavmin=3480., wavmax=9700.):
     
     '''
     
@@ -181,21 +183,27 @@ def spectrum(T, R, lib, wavmin=3480., wavmax=9700.):
     else: 
 
         #find the spectrum that fits T best
-        print('T= ',T)
-        Tmin = str(T-100.)
+        #print('T = ',T)
+        Tmin = str(max(T-100.,3000.))
         Tmax = str(T+100.)
-        Rmin = str(R-0.2)
+        Rmin = str(max(R-0.2,0.))
         Rmax = str(R+0.2)
-        cut = lib.library_params.query(Rmin + '< radius < ' + Rmax + ' and' + Tmin + ' < Teff < ' + Tmax)
+        
+        fehmin, fehmax = clusterfeh[cluster]-0.25, clusterfeh[cluster]+0.25
+        print(Tmin, Tmax, Rmin, Rmax,fehmin, fehmax)
+        cut = lib.library_params.query('{} < radius < {} and {} < Teff < {} and {} < feh < {}'.format(Rmin,Rmax,Tmin,Tmax,fehmin,fehmax))
         #print('cut\n',cut.head())
         T_offer = zip(list(cut['Teff']), list(cut['lib_index']))
-        T_minindex = min(T_offer, key = lambda t: abs(t[0]-T))[1]
-        cut = cut.loc[T_minindex]
-        #return the spectrum
-        spec = lib.library_spectra[cut.lib_index,0,:]
+        try:
+            T_minindex = min(T_offer, key = lambda t: abs(t[0]-T))[1]
+            cut = cut.loc[T_minindex]
+            #return the spectrum
+            spec = lib.library_spectra[cut.lib_index,0,:]
+        except ValueError:
+            return [], []
         return lib.wav, spec.T
 
-def kepler_spectrum(T, R, lib,deriv=False):
+def kepler_spectrum(cluster, T, R, lib,deriv=False):
     '''
     
     Convolves a blackbody of effective temperature T, 
@@ -214,7 +222,6 @@ def kepler_spectrum(T, R, lib,deriv=False):
     
     
     '''
- #   Kp = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/Kepler_response.txt',
     Kp = pd.read_csv('stars_shortlist/static/Kepler_response.txt',
                                   skiprows=9,
                                   header=None,
@@ -222,7 +229,7 @@ def kepler_spectrum(T, R, lib,deriv=False):
                                   names=['wav','resp'])
     Kp.wav = Kp.wav.astype(np.float)*10. #convert to angström for spectrum function
     #load the spectrum within a wavelength range that fits given T_eff best
-    Spec_wav, Spec_flux = spectrum(T, R, lib,Kp.wav.min(),Kp.wav.max())
+    Spec_wav, Spec_flux = spectrum(cluster, T, R, lib,Kp.wav.min(),Kp.wav.max())
     #map Kepler response linearly into wavelengths given with the spectrum
     if Spec_flux == []:
         print('{}K is too hot or too cool for specmatch-emp.'.format(T))
@@ -272,7 +279,7 @@ def plot_kepler_spectrum(T,R):
         plt.show()  
     return
 
-def kepler_luminosity(T,R,lib, error=False):
+def kepler_luminosity(cluster,T,R,lib, error=False):
     
     '''
     Integrates the Kepler flux,
@@ -284,18 +291,19 @@ def kepler_luminosity(T,R,lib, error=False):
     total Kepler luminosity in erg/s of a dwarf star with effective temperature T
     
     '''
-    params=pd.read_csv('stars_shortlist/static/merged_specs.csv')
+    params = pd.read_csv('stars_shortlist/static/merged_specs.csv')
 
   #  params=pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
     
     #calculate Kepler spectrum of a dwarf star with temperature T
     if error==False:
-        wav, flux, _ = kepler_spectrum(T,R,lib)
+        wav, flux, _ = kepler_spectrum(cluster,T,R,lib)
     elif error==True:
-        wav, flux, _ = kepler_spectrum(T,R,lib,deriv=True)
+        wav, flux, _ = kepler_spectrum(cluster,T,R,lib,deriv=True)
         
     if flux == []:
-        return print('{}K is too hot or too cold'.format(T))
+        print('Kepler luminosity cannot be determined')
+        return np.nan
     else:
         #interpolate where nans occur
         interpolate_nan(wav)
@@ -333,41 +341,56 @@ def Mbol_to_Lum(Mbol, errMbol=pd.Series(), err=False):
 def merged_spec_class(params):
     #p = pd.read_csv('/home/ekaterina/Documents/appaloosa/stars_shortlist/static/merged_specs.csv')
     p = pd.read_csv('stars_shortlist/static/merged_specs.csv')
-    colors = {'g_r':('SDSS_g','SDSS_r'),
-              'r_i':('SDSS_r','SDSS_i'),
-              'i_z':('SDSS_i','SDSS_z'),
-              'z_J':('SDSS_z','J'),
-              'J_H':('J','H'),
-              'H_K':('H','K'),
-              'i-z':('SDSS_i','SDSS_z'),
-              'z-Y':('SDSS_z','SDSS_y'),
-              'J-H':('J','H'),
-              'H-K':('H','K'),}
+
+    colors2 = [('g_r','SDSS_g','SDSS_r'),
+              ('r_i','SDSS_r','SDSS_i'),
+              ('i_z','SDSS_i','SDSS_z'),
+              ('z_J','SDSS_z','J'),
+              ('J_H','J','H'),
+              ('H_K','H','K'),
+              ('i-z','SDSS_i','SDSS_z'),
+              ('z-Y','SDSS_z','SDSS_y'),
+              ('J-H','J','H'),
+              ('H-K','H','K'),]
     p['T_err'] = Terr(p['T'])
     p['R_Rsun_err'] = 0.2*p.R_Rsun
     dif = p.Mbol.diff().fillna(method='bfill').fillna(method='ffill')
     dif = pd.rolling_max(dif,2)/2.
     p['Mbol_err'] = dif.fillna(method='bfill')
+    
     for col in p.columns.values:
         params[col]=np.nan
-    for i, s in params.iterrows():
-        _ = np.array([((s[item[0]]-s[item[1]])-p[key]).abs().argmin() for key, item in colors.items()])
-        idx = np.int(np.median(_[~np.isnan(_)]))    
-        for col in p.columns.values:
-            params[col][i]=p[col].iloc[idx]
+    l1,l2,l3 = zip(*colors2)
+    l = list(set(l2+l3))
+    select = params[l]
+    l1 = list(l1)
+    pselect = p[l1]
+    idx = []
+    for i, s in params.iterrows():#iterate each target
+        
+        s = s.to_dict()
+        
+        _ = np.asarray([((s[i0]-s[i1])-pselect[key]).abs().sort_values().idxmin() for key, i0, i1 in colors2])
+        
+        idx.append(np.int(np.median(_[~np.isnan(_)])))  
 
-    params = params.join(p.iloc[idx])    
+    for col in p.columns.values:
+
+        a = np.asarray(p[col].iloc[idx])
+        params[col] = a
+
+
     return params
 
 
-def L_quieterr(L, R, Rerr, T, Terr,lib):
-    R*=6.96342e10 #stellar radius in cm
-    Rerr*=6.96342e10 #stellar radius error in cm
-    t1 = np.abs(L/R)
-    deriv_L = kepler_luminosity(T, R, lib, error=True)
+def L_quieterr(cluster,L, R, Rerr, T, Terr,lib):
+    Rcm = R*6.96342e10 #stellar radius in cm
+    Rerrcm = Rerr*6.96342e10 #stellar radius error in cm
+    t1 = np.abs(L/Rcm)
+    deriv_L = kepler_luminosity(cluster,T, R, lib, error=True)
     t2 = np.abs(deriv_L)
     #print(t1,t2)
-    return (t1 * Rerr)+ (t2 * Terr)
+    return (t1 * Rerrcm)+ (t2 * Terr)
 
 def Terr(Tseq):
     #python version problem
