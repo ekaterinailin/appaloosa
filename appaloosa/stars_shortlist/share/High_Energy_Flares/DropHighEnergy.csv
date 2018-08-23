@@ -1,0 +1,31 @@
+EPIC,istart,istop,flaredropwhy,checkTPFifflare,note
+210978953,2872,2886,artifact,1,
+211021098,3074,3075,artifact,1,
+211024798,1034,1035,short,1,
+211038389,1104,1115,noise,0,whole CCD flashes
+211038389,1124,1132,noise,0,no flares in LC
+211060530,,,allartifacts,0,Bright CCD row
+211063744,3086,3087,artifact,1,
+211066337,2450,2453,artifact,0,No brightening visible
+211066337,397,399,artifact,0,No brightening visible
+211078145,517,519,short,1,
+211079332,1202,1204,short,1,
+211089323,,,allartifacts,0,saturated
+211091848,697,699,artifact,0,No brightening visible
+211096368,2233,2237,noise,0,Bright CCD row
+211107439,3169,3180,artifact,1,
+211114329,2044,2046,short,0,No brightening visible
+211115638,708,710,short,1,
+211120842,717,719,short,0,dropout CCD row
+211151674,2591,2603,artifact,1,
+211909748,544,546,short,0,flagged cadences
+211916505,2285,2290,artifact,1,
+211936906,1417,1421,artifact,0,funny transit
+211955036,1536,1537,artifact,0,saturated
+211955036,1545,1551,artifact,0,saturated
+211972627,,,allartifacts,0,broken pixel
+211975426,1197,1199,short,0,funny transit
+212034371,458,460,artifact,0,No brightening visible
+212034371,1531,1534,short,0,contamination
+212034371,1797,1799,short,0,No brightening visible
+210966700,1444,1447,artifact,0,flagged cadences
