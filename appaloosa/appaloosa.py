@@ -1078,8 +1078,8 @@ def FakeFlaresDist(objectid, std, nfake, ampl=(5e-1,5e0), dur=(5e-1,2e1),
         
         fig, (ax,ax1) = plt.subplots(ncols=1, nrows=2, figsize=(4,8))
         ax.scatter(lndur_fake[:-1], lnampl_fake[:-1])
-        ax.set_xlabel(r'log duration (in min)')
-        ax.set_ylabel(r'log amplitude (in rel. flux units)')
+        ax.set_xlabel(r'log duration (min)')
+        ax.set_ylabel(r'log amplitude (rel. flux - 1)')
         ax.set_title('EPIC {}'.format(objectid))
         ax.grid(color='0.5', linestyle='-', linewidth=1,alpha=0.5)
         #ax.axis([0.,2.5,-3.5,-0.5])

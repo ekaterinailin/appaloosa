@@ -97,11 +97,13 @@ def interactive_CMD(specs,cid1='SDSS_g',cid2='SDSS_i'):
     '/home/ekaterina/Documents/appaloosa/stars_shortlist/share/temp'
     '''
     # Create some random data and put it into a ColumnDataSource
-    s = specs[[cid1, cid2]].dropna(how='any')
+    s = specs[[cid1, cid2, 'e'+cid1,'e'+cid2]].dropna(how='any')
     x = list(s[cid1]-s[cid2])
     y = list(s[cid2])
+    size = list(np.sqrt(s['e'+cid1]**2+s['e'+cid2]**2)*100.)
+    print(size)
     z = list(s.index.values)
-    source_data = ColumnDataSource(data=dict(x=x, y=y,desc=z))
+    source_data = ColumnDataSource(data=dict(x=x, y=y,desc=size))
     
     # Create a button that saves the coordinates of selected data points to a file
     savebutton = Button(label="Save", button_type="success")
@@ -124,8 +126,8 @@ def interactive_CMD(specs,cid1='SDSS_g',cid2='SDSS_i'):
     # Plot the data and save the html file
     p = figure(plot_width=800, plot_height=400, 
                #y_range=(20,7),
-               tools="lasso_select, reset",)
-    p.circle(x='x', y='y', source=source_data)
+               tools="lasso_select, reset, hover",)
+    p.circle(x='x', y='y', size='desc', source=source_data, fill_alpha=0.8)
     p.xaxis.axis_label = '{}-{}'.format(cid1,cid2)
     p.yaxis.axis_label = cid1
     plot = column(p, savebutton)
@@ -348,8 +350,8 @@ def merged_spec_class(params):
               ('z_J','SDSS_z','J'),
               ('J_H','J','H'),
               ('H_K','H','K'),
-              ('i-z','SDSS_i','SDSS_z'),
-              ('z-Y','SDSS_z','SDSS_y'),
+              #('i-z','SDSS_i','SDSS_z'),
+              #('z-Y','SDSS_z','SDSS_y'),
               ('J-H','J','H'),
               ('H-K','H','K'),]
     p['T_err'] = Terr(p['T'])
@@ -371,7 +373,7 @@ def merged_spec_class(params):
         s = s.to_dict()
         
         _ = np.asarray([((s[i0]-s[i1])-pselect[key]).abs().sort_values().idxmin() for key, i0, i1 in colors2])
-        
+        print(_.mean(),_.std())
         idx.append(np.int(np.median(_[~np.isnan(_)])))  
 
     for col in p.columns.values:
@@ -379,7 +381,7 @@ def merged_spec_class(params):
         a = np.asarray(p[col].iloc[idx])
         params[col] = a
 
-
+    
     return params
 
 
