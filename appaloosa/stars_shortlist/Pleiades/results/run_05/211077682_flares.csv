@@ -1,0 +1,2 @@
+,ampl,dur,ed,ederr,istart,istop,istart_no_sys_no_thruster,istop_no_sys_no_thruster,istart_no_sys_no_thruster.1,istop_no_sys_no_thruster.1,corrected,myed,myenerg,myenerg_err,L_bol,L_bol_err,count_true,falsepos_corrected,ED_true,energ_true
+0,0.15129557140533895,0.04086323442606954,379.7249048237216,81.73119730024945,1984,1986,1984.0,1986.0,1984.0,1986.0,4.75,391.34520327863237,7.812145709218666e+31,4.48655027358235e+31,1.30116155957454e+28,1.12351320399495e+28,4.75,0.0,1160.1916304415117,2.316007962201064e+32

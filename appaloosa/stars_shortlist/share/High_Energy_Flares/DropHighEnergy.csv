@@ -29,3 +29,9 @@ EPIC,istart,istop,flaredropwhy,checkTPFifflare,note
 212034371,1531,1534,short,0,contamination
 212034371,1797,1799,short,0,No brightening visible
 210966700,1444,1447,artifact,0,flagged cadences
+211073598,,,allartifacts,0,Negative signal
+211038945,3230,3232,artifact,0,
+211063000,45,47,too short,0,
+211063000,37,40,too short,0,
+211020742,1658,1672,artifact,0,
+211068337,2529,2539,weird shape,0,

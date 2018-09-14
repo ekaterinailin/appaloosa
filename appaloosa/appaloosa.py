@@ -1210,73 +1210,74 @@ def FakeFlares(objectid, time, flux, error, flags, tstart, tstop,
          nbins = 10
     
     # the number of events per bin recovered
-    fake_rec_bin_N, fake_ed_bin = np.histogram(ed_fake, weights=rec_fake, bins=nbins)
-    #rec_rec_bin_N, rec_ed_bin = np.histogram(ed_rec, weights=rec_fake, bins=nbins)
-    # the number of events per bin
+    #print(nbins,rec_fake,ed_fake)
+    #fake_rec_bin_N, fake_ed_bin = np.histogram(ed_fake, weights=rec_fake, bins=nbins)
+    ##rec_rec_bin_N, rec_ed_bin = np.histogram(ed_rec, weights=rec_fake, bins=nbins)
+    ## the number of events per bin
 
-    fake_rec_bin_D, _ = np.histogram(ed_fake, bins=nbins)
-    #rec_rec_bin_D, _ = np.histogram(ed_rec, bins=nbins)
+    #fake_rec_bin_D, _ = np.histogram(ed_fake, bins=nbins)
+    ##rec_rec_bin_D, _ = np.histogram(ed_rec, bins=nbins)
 
-    fake_ed_bin_center = (fake_ed_bin[1:] + fake_ed_bin[:-1])/2.
-    #rec_ed_bin_center = (rec_ed_bin[1:] + rec_ed_bin[:-1])/2.
+    #fake_ed_bin_center = (fake_ed_bin[1:] + fake_ed_bin[:-1])/2.
+    ##rec_ed_bin_center = (rec_ed_bin[1:] + rec_ed_bin[:-1])/2.
     
-    fake_rec = pd.DataFrame({'N':fake_rec_bin_N,'D':fake_rec_bin_D,'bins':fake_ed_bin_center})
-    #rec_rec = pd.DataFrame({'N':rec_rec_bin_N,'D':rec_rec_bin_D,'bins':rec_ed_bin_center})
+    #fake_rec = pd.DataFrame({'N':fake_rec_bin_N,'D':fake_rec_bin_D,'bins':fake_ed_bin_center})
+    ##rec_rec = pd.DataFrame({'N':rec_rec_bin_N,'D':rec_rec_bin_D,'bins':rec_ed_bin_center})
     
-    fake_rec = fake_rec[fake_rec.D != 0.]
-    #rec_rec = rec_rec[rec_rec.D != 0.]
+    #fake_rec = fake_rec[fake_rec.D != 0.]
+    ##rec_rec = rec_rec[rec_rec.D != 0.]
     
-    fake_rec['rec_rate'] = fake_rec.N/fake_rec.D
+    #fake_rec['rec_rate'] = fake_rec.N/fake_rec.D
     #rec_rec['rec_rate'] = rec_rec.N/rec_rec.D
 
     #rec_bin = np.nan_to_num(rec_bin, copy=True)
-    if savefile is True:
-        # look to see if output folder exists
-        # fldr = objectid[0:3]
-        # outdir = 'aprun/' + fldr + '/'
-        # if not os.path.isdir(outdir):
-        #     try:
-        #         os.makedirs(outdir)
-        #     except OSError:
-        #         pass
+    #if savefile is True:
+        ## look to see if output folder exists
+        ## fldr = objectid[0:3]
+        ## outdir = 'aprun/' + fldr + '/'
+        ## if not os.path.isdir(outdir):
+        ##     try:
+        ##         os.makedirs(outdir)
+        ##     except OSError:
+        ##         pass
         
-        header = ['min_time','max_time','std_dev','nfake',
-                  'min_amplitude','max_amplitude',
-                  'min_duration','max_duration',
-                  'fake_ed68_i','fake_ed90_i',
-     #             'rec_ed68_i','rec_ed90_i',
+        #header = ['min_time','max_time','std_dev','nfake',
+                  #'min_amplitude','max_amplitude',
+                  #'min_duration','max_duration',
+                  #'fake_ed68_i','fake_ed90_i',
+     ##             'rec_ed68_i','rec_ed90_i',
 
-                 ]
+                 #]
 
-        if glob.glob(outfile)==[]:
-            dfout = pd.DataFrame()
-            metadata = dict()
-        else:
-            dfout, metadata = h5load(pd.HDFStore(outfile))
+        #if glob.glob(outfile)==[]:
+            #dfout = pd.DataFrame()
+            #metadata = dict()
+        #else:
+            #dfout, metadata = h5load(pd.HDFStore(outfile))
         
-        # use this completeness curve to estimate 68% complete
-        #rl = np.isfinite(rec_bin)
-        #w_in = rec_bin[rl]
+        ## use this completeness curve to estimate 68% complete
+        ##rl = np.isfinite(rec_bin)
+        ##w_in = rec_bin[rl]
 
-        fake_rec['frac_rec_sm'] = wiener(fake_rec.rec_rate, 3)
-        #rec_rec['frac_rec_sm'] = wiener(rec_rec.rec_rate, 3)
+        #fake_rec['frac_rec_sm'] = wiener(fake_rec.rec_rate, 3)
+        ##rec_rec['frac_rec_sm'] = wiener(rec_rec.rec_rate, 3)
         
-        fake_ed68_i, fake_ed90_i = ed6890(fake_rec.bins,fake_rec.frac_rec_sm)
-        #rec_ed68_i, rec_ed90_i = ed6890(rec_rec.bins,rec_rec.frac_rec_sm)
+        #fake_ed68_i, fake_ed90_i = ed6890(fake_rec.bins,fake_rec.frac_rec_sm)
+        ##rec_ed68_i, rec_ed90_i = ed6890(rec_rec.bins,rec_rec.frac_rec_sm)
         
-        outrow = [[item] for item in [min(time), max(time), std, nfake, ampl[0], 
-                                      ampl[1], dur[0], dur[1], fake_ed68_i, fake_ed90_i,]]
-                                      #rec_ed68_i, rec_ed90_i,]]
+        #outrow = [[item] for item in [min(time), max(time), std, nfake, ampl[0], 
+                                      #ampl[1], dur[0], dur[1], fake_ed68_i, fake_ed90_i,]]
+                                      ##rec_ed68_i, rec_ed90_i,]]
         
-        if verboseout is True:
-            #joined = pd.join([fake_rec,rec_rec])
-            for i, row in fake_rec.iterrows():
+        #if verboseout is True:
+            ##joined = pd.join([fake_rec,rec_rec])
+            #for i, row in fake_rec.iterrows():
 
-                header = header + ['ed_bin_center', 'rec_bin', 'frac_rec_sm']
-                outrow = outrow+[[row.bins],[row.rec_rate], [row.frac_rec_sm]]
-                dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
-        else:
-            dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
+                #header = header + ['ed_bin_center', 'rec_bin', 'frac_rec_sm']
+                #outrow = outrow+[[row.bins],[row.rec_rate], [row.frac_rec_sm]]
+                #dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
+        #else:
+            #dfout = dfout.append(pd.DataFrame(dict(zip(header,outrow))),ignore_index=True)
        # h5store(outfile,dfout,**metadata)
 
     #centers of bins, fraction of recovered fake flares per bin, EDs of generated fake flares, 
